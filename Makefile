@@ -40,4 +40,9 @@ probe:
 probe-v1:
 	swift run --package-path Packages/KandevKit kandev-probe $(KANDEV) < Packages/KandevKit/Probe/discovery.json
 
-.PHONY: gen build-ios build-macos test test-live test-live-write probe probe-v1
+.PHONY: gen build-ios build-macos test test-live test-live-write probe probe-v1 screenshots
+
+# Photograph the screens, for reviewing appearance by looking at it. Not a test:
+# see ADR-0003 and docs/design.md. Output lands in artifacts/ (gitignored).
+screenshots:
+	./scripts/screenshots $(SCREENS)

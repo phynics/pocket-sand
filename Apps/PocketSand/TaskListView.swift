@@ -26,6 +26,8 @@ struct TaskListView: View {
     /// does not need it, because the server already has the brief.
     @State private var openedTaskID: String?
     @State private var openedSentence = ""
+    /// Which door the create sheet should open on, for a screenshot run.
+    @State private var createSheetMode: NewTaskView.Mode = .task
     @State private var removal: TaskRemovalStore
 
     private var store: TaskListStore { session.taskList }
@@ -86,6 +88,7 @@ struct TaskListView: View {
                         await store.refresh()
                     }
                     await store.startWatching()
+                    openRequestedScreen()
                 }
                 .onDisappear { store.stopWatching() }
                 .onOpenURL { url in
@@ -115,7 +118,7 @@ struct TaskListView: View {
                 }
                 .sheet(isPresented: $isCreatingTask, onDismiss: { newTask = nil }) {
                     if let newTask {
-                        NewTaskView(store: newTask) { opened in
+                        NewTaskView(store: newTask, initialMode: createSheetMode) { opened in
                             isCreatingTask = false
                             openedTaskID = opened.taskID
                             openedSentence = opened.sentence
@@ -129,13 +132,40 @@ struct TaskListView: View {
         }
     }
 
+    /// Opens whatever a screenshot run asked for. A no-op in a release build and while
+    /// no run is active; see `ScreenshotTour`.
+    private func openRequestedScreen() {
+        guard let screen = ScreenshotTour.screen else { return }
+        switch screen {
+        case .list:
+            if case .failed = store.phase {
+                ScreenshotTour.ready(.failed)
+            } else {
+                ScreenshotTour.ready(store.rows.isEmpty ? .failed : .loaded)
+            }
+        case .detail:
+            guard let taskID = ScreenshotTour.taskID else { break }
+            path = [taskID]
+        case .newTask:
+            openCreateSheet(mode: .task)
+        case .chat:
+            openCreateSheet(mode: .chat)
+        case .setup:
+            openCreateSheet(mode: .setup)
+        case .connect:
+            // Nothing to open: `connect` means the saved server was cleared, so the
+            // connect screen is showing instead of this one.
+            break
+        }
+    }
+
     /// Opens the create screen, with the workspace the list is already showing.
     ///
     /// Idempotent, because a second tap while the sheet is open used to rebuild the
     /// store underneath it — which resets the form someone is in the middle of, and
     /// shows up as the sheet "opening again". A tap on a button that has already done
     /// its job should do nothing.
-    private func openCreateSheet() {
+    private func openCreateSheet(mode: NewTaskView.Mode = .task) {
         guard !isCreatingTask else { return }
         newTask = NewTaskStore(
             taskSource: session.client,
@@ -145,6 +175,7 @@ struct TaskListView: View {
             catalogue: session.catalogue,
             workspaceID: store.workspace?.id
         )
+        createSheetMode = mode
         isCreatingTask = true
     }
 

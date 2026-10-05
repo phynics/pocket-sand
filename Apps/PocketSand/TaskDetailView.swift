@@ -79,6 +79,11 @@ struct TaskDetailView: View {
         .task {
             if transcript.phase == .idle {
                 await conversation.load(taskID: taskID)
+                if case .failed = transcript.phase {
+                    ScreenshotTour.ready(.failed)
+                } else {
+                    ScreenshotTour.ready(.loaded)
+                }
             }
         }
         .onChange(of: transcript.task) { _, task in

@@ -41,6 +41,7 @@ struct ConnectView: View {
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .paperBackground()
+        .task { ScreenshotTour.ready(.ready) }
     }
 
     /// The app's name is the one place a large serif face is used as a mark rather

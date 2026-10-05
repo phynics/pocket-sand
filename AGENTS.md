@@ -155,18 +155,43 @@ here can press that button. Launch the URL from a *cold* app and the prompt stil
 appears, so deep links are for notifications and sharing, not for unattended
 verification.
 
-The technique that does work is to open the screen from code: set the initial path
-in `TaskListView` to the task's id, build, screenshot, then put it back. Two rules
-come from getting this wrong:
+## Photographing a screen
 
-- **Mark the edit.** The patch is one line in a file that has an identical-looking
-  line, and it is invisible in a diff summary. Write `// TEMPORARY-DEEPLINK` on it,
-  and grep for the marker rather than trusting that you reverted it.
-- **Do not trust a backup file.** A backup taken while the patch was live restores
-  the patch, and then the next build ships a hardcoded task id to everyone. Verify
-  the *file* (`grep -n "State private var path"`) and, once it is committed, verify
-  the *commit* (`git grep <id> HEAD`) — a working tree can be reverted under you by
-  anything else editing the repo.
+Since there is no way to tap a simulator, the app is not driven — it is *told* which
+screen to open. `./scripts/screenshots` walks the matrix and captures PNGs into
+`artifacts/screenshots/`, with a contact sheet at `index.md`:
+
+```bash
+./scripts/screenshots                      # every screen, light and dark
+./scripts/screenshots newtask dark         # one screen, one appearance
+SIZES=accessibility-extra-extra-large ./scripts/screenshots
+KANDEV_TASK=<id> ./scripts/screenshots detail
+make screenshots SCREENS="list newtask"    # the same thing
+```
+
+The pieces, and each one is load-bearing:
+
+- **`Apps/PocketSand/ScreenshotTour.swift`** reads `KANDEV_SCREEN` and friends. It is
+  inert in a release build (`screen` is always `nil`, `ready` does nothing), so the
+  call sites need no conditions and a shipped app cannot be driven this way. This
+  replaced the old ritual of patching `TaskListView` by hand and remembering to put it
+  back — a patch that a stale backup could restore into a commit.
+- **The readiness marker is a file, not a clock.** Each screen writes
+  `Documents/screenshot-ready` when it settles, and the script reads it from the
+  container. Waiting on `sleep` is how you photograph a spinner.
+- **The marker carries the state**, and the script refuses to call a failed screen a
+  success. The first run against a server that had quietly gone away settled *every*
+  screen and reported them all ok, with half of them showing "No workflow".
+- **The status bar is frozen** (`simctl status_bar override`) so a clock cannot turn
+  every diff into a difference in the time.
+- **`KANDEV` and `KANDEV_TOKEN` come from `local.mk`**, like the live suites.
+
+What it reaches: appearance (`simctl ui appearance`), text size (`content_size`,
+including the accessibility sizes), and every screen the tour knows by name. What it
+does **not** reach: anything that needs a tap — open menus, a half-typed field, a
+swipe — and motion, which a still cannot show (`simctl io recordVideo` can). A screen
+that needs data needs a server; there are no fixtures yet, so a run without one
+photographs empty states.
 
 Two traps worth not rediscovering:
 

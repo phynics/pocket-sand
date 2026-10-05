@@ -11,3 +11,5 @@ Package.resolved
 *.trace
 .env
 local.mk
+# Screenshot runs, and any baseline images kept beside them.
+artifacts/

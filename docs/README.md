@@ -22,6 +22,8 @@ the document is what needs fixing.
   task is the object you navigate to, rather than a thread.
 - [`adr/0003-tests-cover-the-model-layer.md`](adr/0003-tests-cover-the-model-layer.md) —
   why there are no view tests, and what that obliges the code to do instead.
+- [`adr/0004-screenshots-are-a-review-lever.md`](adr/0004-screenshots-are-a-review-lever.md) —
+  how appearance gets checked when there is no way to tap a simulator.
 
 ## Adding to this directory
 

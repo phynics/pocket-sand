@@ -11,6 +11,16 @@ struct RootView: View {
 
     init() {
         let servers = ServerBookmarkStore()
+        // A screenshot run brings its own server, or asks for none so that the connect
+        // screen is what gets photographed. Inert in a release build, and idempotent
+        // because a view can be initialised more than once.
+        if ScreenshotTour.isActive {
+            if let server = ScreenshotTour.server {
+                servers.add(baseURLString: server.address, token: server.token)
+            } else {
+                for bookmark in servers.bookmarks { servers.remove(bookmark) }
+            }
+        }
         _servers = State(initialValue: servers)
         if let active = servers.active {
             _session = State(

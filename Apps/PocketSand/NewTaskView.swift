@@ -34,7 +34,13 @@ struct NewTaskView: View {
     let onOpened: (OpenedTask) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var mode: Mode = .task
+    @State private var mode: Mode
+
+    init(store: NewTaskStore, initialMode: Mode = .task, onOpened: @escaping (OpenedTask) -> Void) {
+        self.store = store
+        self.onOpened = onOpened
+        _mode = State(initialValue: initialMode)
+    }
 
     /// What this screen can start.
     enum Mode: String, CaseIterable, Identifiable {
@@ -142,7 +148,17 @@ struct NewTaskView: View {
             // below it fall under the fold, and the whole argument of this screen is
             // what it shows at once: what you are asking for, where it goes, who takes
             // it, and the other ways to start.
-            .task { await store.loadOptions() }
+            .task {
+                await store.loadOptions()
+                // Settled. Whether it settled *with* anything is what a run has to know:
+                // a screenshot of a screen that failed to load is not evidence about how
+                // that screen looks. A no-op unless a run asked for it.
+                if case .failed = store.phase {
+                    ScreenshotTour.ready(.failed)
+                } else {
+                    ScreenshotTour.ready(.loaded)
+                }
+            }
         }
     }
 
