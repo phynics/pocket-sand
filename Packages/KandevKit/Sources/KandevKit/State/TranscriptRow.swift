@@ -235,12 +235,12 @@ public struct TranscriptTurn: Sendable, Identifiable, Equatable {
     /// per turn put all of that behind one control, so a task that ran for half an hour
     /// read as a single count and one very long wait.
     ///
-    /// A finished run is its summary line and nothing else. The run being written keeps
-    /// its tail — the last `recentLimit` one-liners — with its summary underneath, and its
-    /// newest step is drawn as `.liveStep`: a paragraph that follows the text as it grows,
-    /// in addition to the tail's places rather than taking one of them. A run of one is
-    /// left alone in either state: a single step is its own line, and folding it away
-    /// would hide a command behind the words "ran a command".
+    /// A finished run is its summary line and nothing else, however short: the reader is past
+    /// it, and the steps are one tap away. The run being written keeps its tail — the last
+    /// `recentLimit` one-liners — with its summary underneath, and its newest step is drawn as
+    /// `.liveStep`: a paragraph that follows the text as it grows, in addition to the tail's
+    /// places rather than taking one of them. A short run being written is shown as it is,
+    /// because there is nothing behind it to fold.
     ///
     /// `expanded` holds the ids of the loops the reader has opened out. An open loop shows
     /// all of its rows and keeps its line underneath as the control that closes it again.
@@ -276,17 +276,14 @@ public struct TranscriptTurn: Sendable, Identifiable, Equatable {
                     } else {
                         items.append(contentsOf: run.collapsedRepeats())
                     }
-                } else if isOpen || run.count > 1 {
-                    // A finished loop is its summary, until the reader opens it. The gist is
-                    // what it is worth unasked; the steps are one tap away.
+                } else {
+                    // A finished loop is its line, however short: the reader is past it, and
+                    // the steps are one tap away.
                     if isOpen {
                         items.append(contentsOf: run.collapsedRepeats())
                     }
                     items.append(summary(for: run, live: false, now: now))
-                } else {
-                    items.append(contentsOf: run.collapsedRepeats())
-                }
-            }
+                }            }
         }
         return live ? items.markingLiveStep() : items
     }

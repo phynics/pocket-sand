@@ -354,13 +354,24 @@ struct TranscriptCondensingTests {
         TranscriptRow(id: id, kind: .tool, text: id, at: at)
     }
 
-    @Test("a short run is left as it is")
-    func shortRunsAreLeftAlone() {
+    /// A turn with no work in it is left as it is: there is nothing to fold.
+    @Test("a turn with no work is left as it is")
+    func noWorkIsLeftAlone() {
+        let items = turn([row("1", .prompt), row("3", .reply)]).items(condensing: true)
+
+        #expect(items.map(\.id) == ["1", "3"])
+        #expect(items.contains(where: \.isStepsSummary) == false)
+    }
+
+    /// A finished turn's work folds even when it is one step: the reader is past it, and the
+    /// step is one tap away.
+    @Test("a finished turn's single step folds to its line")
+    func singleStepFolds() {
         let items = turn([row("1", .prompt), row("2", .thinking), row("3", .reply)])
             .items(condensing: true)
 
-        #expect(items.map(\.id) == ["1", "2", "3"])
-        #expect(items.contains(where: \.isStepsSummary) == false)
+        #expect(items.map(\.id) == ["1", "steps:2", "3"])
+        #expect(items[1].isStepsSummary)
     }
 
     @Test("says so when there is nothing to fold")
@@ -446,12 +457,19 @@ struct RunSummaryTests {
         #expect(live.contains(where: \.isStepsSummary) == false)
     }
 
-    /// A single step is its own line whatever its state. Folding "grep …" into "ran a
-    /// command" hides the command behind the words for it.
-    @Test("a run of one is never folded")
-    func aRunOfOneStays() {
-        #expect(turn(machineRows(1)).items(condensing: false).count == 1)
-        #expect(turn(machineRows(1)).items(condensing: false, generating: true).count == 1)
+    /// A finished loop of one folds like any other: the reader is past it, and its command is
+    /// one tap away. A loop of one still being written is shown, because there is nothing
+    /// behind it to fold.
+    @Test("a finished run of one folds, a live one is shown")
+    func finishedRunOfOneFolds() {
+        let finished = turn(machineRows(1)).items(condensing: false)
+        #expect(finished.count == 1)
+        #expect(finished[0].isStepsSummary)
+        #expect(finished[0].stepsSummaryLabel == "Ran 1 command")
+
+        let live = turn(machineRows(1)).items(condensing: false, generating: true)
+        #expect(live.count == 1)
+        #expect(live[0].isStepsSummary == false, "a run being written is shown while it fits")
     }
 
     /// A finished loop collapses, however short, because that is what finishing means: the
