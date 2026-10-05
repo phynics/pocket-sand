@@ -111,6 +111,10 @@ public struct KandevMessage: Sendable, Codable, Equatable, Identifiable {
         case scriptExecution = "script_execution"
         /// A lifecycle notice, such as "New session started".
         case status
+        /// A question the agent has asked and is blocked on.
+        case clarificationRequest = "clarification_request"
+        /// A prompt asking permission to do something.
+        case permissionRequest = "permission_request"
     }
 
     public var id: String
@@ -190,6 +194,12 @@ extension JSONValue {
     /// The boolean inside a `.bool` case.
     public var boolValue: Bool? {
         if case .bool(let value) = self { return value }
+        return nil
+    }
+
+    /// The array inside an `.array` case.
+    public var arrayValue: [JSONValue]? {
+        if case .array(let value) = self { return value }
         return nil
     }
 }

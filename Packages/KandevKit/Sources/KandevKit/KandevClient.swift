@@ -158,6 +158,29 @@ public struct KandevClient: Sendable {
         )
     }
 
+    /// Answers every question of one bundle at once, or rejects it.
+    ///
+    /// The route takes the whole bundle, so a per-question choice is collected by the caller and
+    /// sent when the bundle is finished: the agent stays blocked until every question has an
+    /// answer.
+    public func respondToClarification(
+        pendingID: String,
+        answers: [KandevClarificationAnswer],
+        rejected: Bool = false
+    ) async throws {
+        let encoded: [JSONValue] = answers.map { answer in
+            .object([
+                "question_id": .string(answer.questionID),
+                "selected_options": .array(answer.selectedOptions.map { .string($0) }),
+                "custom_text": answer.customText.map { .string($0) } ?? .null,
+            ])
+        }
+        try await http.post(
+            KandevHTTPRoute.clarificationRespond(pendingID: pendingID),
+            body: .object(["answers": .array(encoded), "rejected": .bool(rejected)])
+        )
+    }
+
     // MARK: - A conversation
 
     public func messages(

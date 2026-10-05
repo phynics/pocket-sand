@@ -106,6 +106,44 @@ struct TranscriptRowTests {
         #expect(TranscriptRow(message: message)?.output == nil)
     }
 
+    /// A question an agent is blocked on, in the shape the server sends it: one message per
+    /// question, carrying the question and its options under `metadata`.
+    @Test("a clarification maps to an ask row carrying its question")
+    func clarificationMapsToAnAskRow() throws {
+        let message = try JSONDecoder().decode(
+            KandevMessage.self,
+            from: Data(#"""
+{"id":"m1","type":"clarification_request","author_type":"agent","content":"Which database should this use?","metadata":{"pending_id":"p1","session_id":"s1","question":{"id":"q1","title":"Database","prompt":"Which database should this use?","options":[{"option_id":"o1","label":"Postgres","description":"The one already running"},{"option_id":"o2","label":"SQLite","description":""}],"allow_custom_text":true},"question_index":1,"question_total":1,"status":"pending"}}
+"""#.utf8)
+        )
+
+        let row = try #require(TranscriptRow(message: message))
+        #expect(row.kind == .ask)
+        #expect(row.isMachineOutput == false, "a question is addressed to the reader, not folded away")
+
+        let ask = try #require(row.ask)
+        #expect(ask.pendingID == "p1")
+        #expect(ask.questionID == "q1")
+        #expect(ask.options.map(\.id) == ["o1", "o2"])
+        #expect(ask.options.first?.description == "The one already running")
+        #expect(ask.allowsCustomText)
+        #expect(ask.isOpen)
+    }
+
+    @Test("an answered clarification carries what was chosen")
+    func answeredClarification() throws {
+        let message = try JSONDecoder().decode(
+            KandevMessage.self,
+            from: Data(#"""
+{"id":"m1","type":"clarification_request","author_type":"agent","content":"Which database?","metadata":{"pending_id":"p1","question":{"id":"q1","title":"Database","prompt":"Which database?","options":[{"option_id":"o1","label":"Postgres"},{"option_id":"o2","label":"SQLite"}]},"status":"answered","response":{"question_id":"q1","selected_options":["o1"]}}}
+"""#.utf8)
+        )
+
+        let ask = try #require(TranscriptRow(message: message)?.ask)
+        #expect(ask.answer?.selectedOptions == ["o1"])
+        #expect(ask.isOpen == false)
+    }
+
     /// Captured from a live server while an agent worked. `tool_read` was a kind
     /// this client had never seen, and treating it as unknown rendered the word
     /// "read" as a serif headline in the middle of a transcript.

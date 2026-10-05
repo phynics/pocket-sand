@@ -20,6 +20,7 @@ enum RowGlyph {
         case .prompt: "person"
         case .reply: "text.alignleft"
         case .status: "info.circle"
+        case .ask: "questionmark.bubble"
         }
     }
 
@@ -87,6 +88,9 @@ struct TranscriptTurnView: View {
     let onShowSteps: (TurnSheetContent) -> Void
     /// Loads a shell call's output for a row the reader opened.
     var loadOutput: ((String) async -> KandevShellOutput?)?
+    /// What to do when the reader answers a question, and when they skip the request.
+    var onAnswer: ((KandevClarification, KandevClarificationAnswer) -> Void)?
+    var onReject: ((String) -> Void)?
 
     var body: some View {
         // A running turn is timed as it goes, so its clock has to tick. Only a working
@@ -152,7 +156,9 @@ struct TranscriptTurnView: View {
                 row: row,
                 isExpanded: expandedRows.contains(row.id),
                 onToggle: { toggle(row.id) },
-                loadOutput: loadOutput
+                loadOutput: loadOutput,
+                onAnswer: onAnswer,
+                onReject: onReject
             )
             .contextMenu { openInDetail(item) }
 
@@ -525,6 +531,9 @@ struct TranscriptRowView: View {
     /// Nil where there is nowhere to fetch from: a preview, or a caller that did not wire a
     /// source. The body is not in the message, so this is the only way to it.
     var loadOutput: ((String) async -> KandevShellOutput?)?
+    /// What to do when the reader answers a question, and when they skip the request.
+    var onAnswer: ((KandevClarification, KandevClarificationAnswer) -> Void)?
+    var onReject: ((String) -> Void)?
 
     var body: some View {
         switch row.kind {
@@ -552,6 +561,17 @@ struct TranscriptRowView: View {
             Text(row.text)
                 .font(Theme.Face.chrome(.caption))
                 .foregroundStyle(Theme.muted)
+
+        case .ask:
+            if let ask = row.ask {
+                AskCard(ask: ask, onAnswer: onAnswer, onReject: onReject)
+            } else {
+                // A clarification whose metadata could not be read: the words are still worth
+                // showing, even if the answers are not.
+                Text(row.text)
+                    .font(Theme.Face.chrome(.callout))
+                    .foregroundStyle(Theme.ink)
+            }
         }
     }
 
@@ -727,6 +747,176 @@ struct TranscriptRowView: View {
             }
         }
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// A question an agent is blocked on, with the answers it will take.
+///
+/// The server sends one message per question of a bundle, so a bundle of three draws three of
+/// these, and every answer goes back together when the last one is chosen — an agent that asked
+/// three questions waits for all three.
+private struct AskCard: View {
+    let ask: KandevClarification
+    let onAnswer: ((KandevClarification, KandevClarificationAnswer) -> Void)?
+    let onReject: ((String) -> Void)?
+
+    /// The choice made here, before the bundle is sent. The server's own answer replaces it once
+    /// the request lands.
+    @State private var chosen: String?
+    @State private var customText = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.base) {
+            header
+            Text(ask.prompt)
+                .font(Theme.Face.prose(.body))
+                .foregroundStyle(Theme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if ask.isOpen {
+                options
+                if ask.allowsCustomText { customField }
+                if ask.bundleSize <= 1 { skip }
+            } else {
+                settled
+            }
+        }
+        .padding(Theme.Space.base)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface)
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder private var header: some View {
+        HStack(spacing: Theme.Space.snug) {
+            Image(systemName: "questionmark.bubble")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.muted)
+            if let context = ask.context, !context.isEmpty {
+                Text(context)
+                    .font(Theme.Face.chrome(.caption))
+                    .foregroundStyle(Theme.muted)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
+            if ask.bundleSize > 1, let index = ask.index {
+                Text("\(index) of \(ask.bundleSize)")
+                    .font(Theme.Face.machine(.caption2))
+                    .foregroundStyle(Theme.muted)
+                    .monospacedDigit()
+            }
+        }
+    }
+
+    /// A rule at the leading edge of the chosen one, which is how this app says "this one"
+    /// everywhere else. No pill, and no accent colour it does not have.
+    @ViewBuilder private var options: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.hair) {
+            ForEach(ask.options) { option in
+                Button {
+                    chosen = option.id
+                    onAnswer?(
+                        ask,
+                        KandevClarificationAnswer(
+                            questionID: ask.questionID,
+                            selectedOptions: [option.id]
+                        )
+                    )
+                } label: {
+                    VStack(alignment: .leading, spacing: Theme.Space.hair) {
+                        Text(option.label)
+                            .font(Theme.Face.chrome(.callout, weight: chosen == option.id ? .semibold : .regular))
+                            .foregroundStyle(Theme.ink)
+                        if !option.description.isEmpty {
+                            Text(option.description)
+                                .font(Theme.Face.chrome(.caption))
+                                .foregroundStyle(Theme.muted)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, Theme.Space.snug)
+                    .padding(.leading, Theme.Space.base)
+                    .overlay(alignment: .leading) {
+                        Rectangle()
+                            .fill(chosen == option.id ? Theme.ink : Theme.rule)
+                            .frame(width: 2)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    @ViewBuilder private var customField: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.snug) {
+            TextField("Or answer in your own words", text: $customText, axis: .vertical)
+                .font(Theme.Face.prose(.callout))
+                .lineLimit(1...4)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, Theme.Space.base)
+                .padding(.vertical, Theme.Space.snug)
+                .fieldWell()
+
+            Button("Send") {
+                let text = customText.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else { return }
+                onAnswer?(ask, KandevClarificationAnswer(questionID: ask.questionID, customText: text))
+            }
+            .font(Theme.Face.chrome(.callout, weight: .semibold))
+            .foregroundStyle(Theme.ink)
+            .buttonStyle(.plain)
+            .disabled(customText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+    }
+
+    @ViewBuilder private var skip: some View {
+        Button("Skip") { onReject?(ask.pendingID) }
+            .font(Theme.Face.chrome(.caption))
+            .foregroundStyle(Theme.muted)
+            .buttonStyle(.plain)
+    }
+
+    @ViewBuilder private var settled: some View {
+        HStack(spacing: Theme.Space.snug) {
+            Image(systemName: settledSymbol)
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.muted)
+            Text(settledLabel)
+                .font(Theme.Face.chrome(.footnote))
+                .foregroundStyle(Theme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var settledSymbol: String {
+        switch ask.status {
+        case .answered: "checkmark"
+        case .rejected, .cancelled, .expired: "xmark"
+        case .pending: ask.agentDisconnected ? "bolt.slash" : "clock"
+        }
+    }
+
+    private var settledLabel: String {
+        if ask.status == .pending, ask.agentDisconnected {
+            return "The agent has gone, so this can no longer be answered."
+        }
+        if let text = ask.answer?.customText, !text.isEmpty { return text }
+        if let answer = ask.answer, !answer.selectedOptions.isEmpty {
+            let labels = ask.options
+                .filter { answer.selectedOptions.contains($0.id) }
+                .map(\.label)
+            if !labels.isEmpty { return labels.joined(separator: ", ") }
+        }
+        switch ask.status {
+        case .answered: return "Answered"
+        case .rejected: return "Skipped"
+        case .cancelled: return "Cancelled"
+        case .expired: return "Expired"
+        case .pending: return "Waiting"
+        }
     }
 }
 

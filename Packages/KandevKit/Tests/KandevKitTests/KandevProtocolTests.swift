@@ -453,6 +453,14 @@ struct KandevHTTPRouteTests {
         )
     }
 
+    @Test("a clarification is answered by its bundle id")
+    func clarificationRespondPath() {
+        #expect(
+            KandevHTTPRoute.clarificationRespond(pendingID: "p1")
+                == "/api/v1/clarification/p1/respond"
+        )
+    }
+
     @Test("a move preview and a commit are siblings")
     func movePaths() {
         #expect(KandevHTTPRoute.taskMove(taskID: "t1") == "/api/v1/tasks/t1/move")

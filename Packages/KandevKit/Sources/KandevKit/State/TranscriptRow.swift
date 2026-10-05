@@ -33,6 +33,11 @@ public struct TranscriptRow: Sendable, Identifiable, Equatable {
         case read
         /// A lifecycle notice.
         case status
+        /// A question an agent has asked and is blocked on.
+        ///
+        /// Not machine output: it is addressed to the reader and wants an answer, so it is
+        /// never folded into a run's summary.
+        case ask
         /// A setup or utility script.
         case script
     }
@@ -54,6 +59,8 @@ public struct TranscriptRow: Sendable, Identifiable, Equatable {
     /// opens it; this is what the row can say without asking — that there is output, how
     /// much of it, and how the command ended.
     public var output: ToolOutputSummary?
+    /// The question an agent is waiting on, when this row is one.
+    public var ask: KandevClarification?
 
     public init(
         id: String,
@@ -61,7 +68,8 @@ public struct TranscriptRow: Sendable, Identifiable, Equatable {
         text: String,
         detail: String? = nil,
         at: Date? = nil,
-        output: ToolOutputSummary? = nil
+        output: ToolOutputSummary? = nil,
+        ask: KandevClarification? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -69,6 +77,7 @@ public struct TranscriptRow: Sendable, Identifiable, Equatable {
         self.detail = detail
         self.at = at
         self.output = output
+        self.ask = ask
     }
 }
 
@@ -493,7 +502,7 @@ extension TranscriptRow {
     public var isMachineOutput: Bool {
         switch kind {
         case .thinking, .tool, .read, .script: true
-        case .prompt, .reply, .status: false
+        case .prompt, .reply, .status, .ask: false
         }
     }
 
@@ -681,7 +690,8 @@ extension TranscriptRow {
             text: label,
             detail: Self.notableStatus(message.metadata?["status"]?.stringValue),
             at: message.createdAt?.date,
-            output: ToolOutputSummary(message: message)
+            output: ToolOutputSummary(message: message),
+            ask: KandevClarification(message: message)
         )
     }
 }
@@ -707,6 +717,10 @@ private extension KandevMessage {
             case .thinking: return .thinking
             case .scriptExecution: return .script
             case .status: return .status
+            case .clarificationRequest: return .ask
+            // A permission prompt is still a prompt, but its options are shaped differently
+            // and the app cannot answer it yet. Left as machine output so it is not lost.
+            case .permissionRequest: return .tool
             // An unrecognised kind is drawn as machine output, not as prose. Prose
             // is a claim that a person should read this, and that is not a claim to
             // make about a kind nobody has seen yet; machine output stays visible
@@ -752,6 +766,8 @@ private extension KandevMessage {
             content
         case .toolRead:
             transcriptLabel
+        case .clarificationRequest, .permissionRequest:
+            content?.isEmpty == false ? content : metadata?["question"]?["prompt"]?.stringValue
         case .thinking, .scriptExecution, nil:
             content?.isEmpty == false ? content : metadata?["thinking"]?.stringValue
         }

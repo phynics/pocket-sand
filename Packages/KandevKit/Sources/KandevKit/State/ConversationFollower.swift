@@ -47,16 +47,28 @@ public protocol KandevShellOutputSource: Sendable {
     func shellOutput(sessionID: String, messageID: String) async throws -> KandevShellOutput
 }
 
+/// Answering the questions an agent is blocked on.
+///
+/// One call for a whole bundle: an agent that asked three questions waits for all three answers
+/// or a rejection of all of them.
+public protocol KandevClarificationResponding: Sendable {
+    func respondToClarification(
+        pendingID: String,
+        answers: [KandevClarificationAnswer],
+        rejected: Bool
+    ) async throws
+}
+
 /// Everything a conversation screen needs from a server: read it, write to it,
-/// find out what a command produced, and hear about changes.
+/// find out what a command produced, answer its questions, and hear about changes.
 public protocol KandevConversationServer: KandevTranscriptSource, KandevPromptSource,
     KandevLiveConversations, KandevSessionStarting, KandevTaskMoving, KandevTaskRemoving,
-    KandevShellOutputSource
+    KandevShellOutputSource, KandevClarificationResponding
 {}
 
 extension KandevClient: KandevConversationStreaming, KandevLiveConversations,
     KandevSessionStarting, KandevTaskMoving, KandevTaskRemoving, KandevShellOutputSource,
-    KandevConversationServer {}
+    KandevClarificationResponding, KandevConversationServer {}
 
 /// Follows one session's conversation.
 ///

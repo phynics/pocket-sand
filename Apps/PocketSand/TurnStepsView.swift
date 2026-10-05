@@ -25,15 +25,22 @@ struct TurnStepsView: View {
     /// Loads a shell call's full output for a row the reader opened. Nil where there is
     /// nowhere to fetch from, and then a command's output is simply not offered.
     var loadOutput: ((String) async -> KandevShellOutput?)?
+    /// What to do when the reader answers a question, and when they skip the request.
+    var onAnswer: ((KandevClarification, KandevClarificationAnswer) -> Void)?
+    var onReject: ((String) -> Void)?
 
     init(
         content: TurnSheetContent,
         title: String,
-        loadOutput: ((String) async -> KandevShellOutput?)? = nil
+        loadOutput: ((String) async -> KandevShellOutput?)? = nil,
+        onAnswer: ((KandevClarification, KandevClarificationAnswer) -> Void)? = nil,
+        onReject: ((String) -> Void)? = nil
     ) {
         self.content = content
         self.title = title
         self.loadOutput = loadOutput
+        self.onAnswer = onAnswer
+        self.onReject = onReject
         // The row that was tapped opens with the sheet. Anything else means tapping the
         // twentieth step of fifty and landing on step one.
         let focused = content.focus.flatMap { id in
@@ -141,7 +148,9 @@ struct TurnStepsView: View {
                 isExpanded: expandedRows.contains(row.id),
                 onToggle: { toggle(row.id) },
                 stepDetail: .paragraph,
-                loadOutput: loadOutput
+                loadOutput: loadOutput,
+                onAnswer: onAnswer,
+                onReject: onReject
             )
         case .repeated(let id, let count, let row):
             RepeatedStepsView(count: count, row: row)
@@ -154,7 +163,9 @@ struct TurnStepsView: View {
                 row: row,
                 isExpanded: expandedRows.contains(row.id),
                 onToggle: { toggle(row.id) },
-                stepDetail: .paragraph
+                stepDetail: .paragraph,
+                onAnswer: onAnswer,
+                onReject: onReject
             )
         case .stepsSummary:
             EmptyView()

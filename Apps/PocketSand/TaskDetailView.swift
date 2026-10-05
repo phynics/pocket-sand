@@ -17,6 +17,8 @@ struct TaskDetailView: View {
 
     @State private var conversation: TaskConversationStore
     @State private var move: TaskMoveStore
+    /// The answers being collected for a question the agent is blocked on.
+    @State private var clarifications: ClarificationStore
     /// Rows showing their full text, and turns showing their work. Both are empty
     /// to start: a thought shows its first line, a long command its first line, and
     /// a finished turn its question and answer.
@@ -60,6 +62,7 @@ struct TaskDetailView: View {
             )
         )
         _move = State(initialValue: TaskMoveStore(mover: source))
+        _clarifications = State(initialValue: ClarificationStore(source: source))
     }
 
     private var transcript: TranscriptStore { conversation.transcript }
@@ -165,7 +168,9 @@ struct TaskDetailView: View {
                 TurnStepsView(
                     content: content,
                     title: transcript.task?.title ?? "Task",
-                    loadOutput: loadShellOutput
+                    loadOutput: loadShellOutput,
+                    onAnswer: answer,
+                    onReject: skip
                 )
             }
             // The sheet opens on a snapshot of the exchange, and a running turn keeps
@@ -377,7 +382,9 @@ struct TaskDetailView: View {
                     previousReply: transcript.turns.reply(preceding: index),
                     expandedRows: $expandedRows,
                     onShowSteps: { stepsContent = $0 },
-                    loadOutput: loadShellOutput
+                    loadOutput: loadShellOutput,
+                    onAnswer: answer,
+                    onReject: skip
                 )
             }
         }
@@ -500,6 +507,17 @@ struct TaskDetailView: View {
             // composer's glass with the two reading as one surface.
             .padding(.bottom, Theme.Space.base)
         }
+    }
+
+    /// Records an answer to a question the agent is blocked on. The bundle goes when its last
+    /// question is answered, because an agent that asked three waits for all three.
+    private func answer(_ clarification: KandevClarification, _ answer: KandevClarificationAnswer) {
+        Task { await clarifications.answer(clarification, with: answer) }
+    }
+
+    /// Dismisses the whole request rather than answering it.
+    private func skip(_ pendingID: String) {
+        Task { await clarifications.reject(pendingID) }
     }
 
     /// Records the task as looked at, as of the activity that is on screen, so its row stops

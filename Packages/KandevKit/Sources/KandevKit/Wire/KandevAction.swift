@@ -270,6 +270,14 @@ public enum KandevHTTPRoute {
         "/api/v1/task-sessions/\(sessionID)/messages/\(messageID)/shell-output"
     }
 
+    /// The answer to a bundle of questions an agent is blocked on.
+    ///
+    /// One request for the whole bundle: either an answer per question, or a rejection of all of
+    /// them. The answers are matched by question id, so their order does not matter.
+    public static func clarificationRespond(pendingID: String) -> String {
+        "/api/v1/clarification/\(pendingID)/respond"
+    }
+
     /// The kanban board for one workflow: its steps and their tasks.
     ///
     /// The board view fans this out, one request per workflow, and aggregates
