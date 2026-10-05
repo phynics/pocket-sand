@@ -75,6 +75,25 @@ public final class TaskListStore {
     /// Whether the list is showing work taken off the board rather than on it.
     public private(set) var showingArchived = false
 
+    /// Which list the screen is showing.
+    public enum Layout: String, Sendable, CaseIterable, Identifiable {
+        /// Work filed in the workspace.
+        case tasks
+        /// Quick chats: tasks the server marks ephemeral because nothing was filed.
+        case chats
+
+        public var id: String { rawValue }
+
+        public var title: String {
+            switch self {
+            case .tasks: "Tasks"
+            case .chats: "Chats"
+            }
+        }
+    }
+
+    public private(set) var layout: Layout = .tasks
+
     /// Newest activity first, which is the order the list is designed around.
     public var query: KandevTaskListQuery { listQuery(page: nil) }
 
@@ -89,10 +108,20 @@ public final class TaskListStore {
             pageSize: pageSize,
             sort: .updatedDesc,
             archived: showingArchived ? .onlyArchived : .active,
-            // Chats belong on the board, not in the archive. The server hides ephemeral
-            // tasks unless asked, and this is the ask.
-            includeEphemeral: !showingArchived
+            // Work and chats are two requests, not one page split in two: the server decides
+            // what is ephemeral, and this is how it is asked for one or the other.
+            onlyEphemeral: layout == .chats
         )
+    }
+
+    /// Switches between the work and the chats.
+    ///
+    /// A refetch rather than a filter over what is held: the server decides what is ephemeral,
+    /// and the two sets are different requests.
+    public func setLayout(_ layout: Layout) async {
+        guard layout != self.layout else { return }
+        self.layout = layout
+        await refresh()
     }
 
     /// Switches between the board and the archive.
@@ -347,7 +376,10 @@ public final class TaskListStore {
 
         var sections: [Section] = []
         if !chats.isEmpty {
-            sections.append(Section(id: "chats", title: "Chats", rows: chats, isChats: true))
+            // Titled only when something else is on screen. In the chats tab it is the only
+            // section, and a heading over the only section is a label that says nothing.
+            let titled = !repositoryOrder.isEmpty || !unassigned.isEmpty
+            sections.append(Section(id: "chats", title: titled ? "Chats" : nil, rows: chats, isChats: true))
         }
         for repositoryID in repositoryOrder {
             sections.append(

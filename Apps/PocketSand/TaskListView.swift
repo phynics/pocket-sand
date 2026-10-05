@@ -282,6 +282,8 @@ struct TaskListView: View {
 
     private var list: some View {
         List {
+            layoutPicker
+
             if store.showingArchived {
                 Section {
                     Text("Tasks you archived, newest first. Swipe one to put it back.")
@@ -331,29 +333,71 @@ struct TaskListView: View {
             if store.phase == .loading && store.rows.isEmpty {
                 ProgressView().controlSize(.small)
             } else if store.phase == .loaded && store.rows.isEmpty {
-                EmptyNote(
-                    title: store.showingArchived ? "Nothing archived" : "No open tasks",
-                    detail: store.showingArchived
-                        ? "Tasks you archive will be here, and can come back."
-                        : "This workspace has nothing on the board. Create a task and it will show up here."
-                )
-                .padding(.horizontal, Theme.Space.loose)
-                .frame(maxWidth: Theme.measure, alignment: .leading)
+                EmptyNote(title: emptyTitle, detail: emptyDetail)
+                    .padding(.horizontal, Theme.Space.loose)
+                    .frame(maxWidth: Theme.measure, alignment: .leading)
             }
         }
         .animation(.default, value: store.rows)
     }
 
+    /// Tasks or chats.
+    ///
+    /// One segmented control, because a chat is a task on the server and the difference is
+    /// only whether anything was filed. A separate screen would be a second list to keep in
+    /// step with this one.
+    private var layoutPicker: some View {
+        Picker(
+            "List",
+            selection: Binding(
+                get: { store.layout },
+                set: { layout in Task { await store.setLayout(layout) } }
+            )
+        ) {
+            ForEach(TaskListStore.Layout.allCases) { layout in
+                Text(layout.title).tag(layout)
+            }
+        }
+        .pickerStyle(.segmented)
+        .listRowInsets(EdgeInsets(
+            top: Theme.Space.snug,
+            leading: Theme.Space.loose,
+            bottom: Theme.Space.base,
+            trailing: Theme.Space.loose
+        ))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .accessibilityLabel("Tasks or chats")
+    }
+
+    private var emptyTitle: String {
+        if store.layout == .chats { return "No chats" }
+        return store.showingArchived ? "Nothing archived" : "No open tasks"
+    }
+
+    private var emptyDetail: String {
+        if store.layout == .chats {
+            return "Start a chat and it will be here. A chat is a conversation rather than work on the board."
+        }
+        return store.showingArchived
+            ? "Tasks you archive will be here, and can come back."
+            : "This workspace has nothing on the board. Create a task and it will show up here."
+    }
+
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            Button {
-                Task { await store.setShowingArchived(!store.showingArchived) }
-            } label: {
-                if store.showingArchived {
-                    Label("Show the board", systemImage: "rectangle.stack")
-                } else {
-                    Label("Show archived", systemImage: "archivebox")
+        // Nothing to archive in the chats list: a chat is a conversation, and the archive is
+        // for work that left the board.
+        if store.layout == .tasks {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    Task { await store.setShowingArchived(!store.showingArchived) }
+                } label: {
+                    if store.showingArchived {
+                        Label("Show the board", systemImage: "rectangle.stack")
+                    } else {
+                        Label("Show archived", systemImage: "archivebox")
+                    }
                 }
             }
         }
@@ -392,7 +436,9 @@ struct TaskListView: View {
     /// reads as stray punctuation.
     private var newTaskButton: some View {
         Button {
-            openCreateSheet()
+            // The tab says which thing this screen is for, so the button starts that thing: a
+            // chat from the chats list, a task from the board.
+            openCreateSheet(mode: store.layout == .chats ? .chat : .task)
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 20, weight: .medium))

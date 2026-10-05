@@ -208,6 +208,10 @@ struct KandevTaskListQueryTests {
 
         let asked = KandevTaskListQuery(includeEphemeral: true).queryItems
         #expect(value(asked, "include_ephemeral") == "true")
+
+        let only = KandevTaskListQuery(onlyEphemeral: true).queryItems
+        #expect(value(only, "only_ephemeral") == "true")
+        #expect(value(only, "include_ephemeral") == nil, "only is asked for, not both")
     }
 }
 

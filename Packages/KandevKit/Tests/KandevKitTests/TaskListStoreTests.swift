@@ -88,13 +88,15 @@ func makeTask(
     state: String = "IN_PROGRESS",
     sessionState: String? = "WAITING_FOR_INPUT",
     activity: String? = "2026-10-04T18:07:04.074817797Z",
-    archived: Bool = false
+    archived: Bool = false,
+    ephemeral: Bool = false
 ) -> KandevTask {
     KandevTask(
         id: id,
         title: title,
         state: state,
         workflowStepID: stepID,
+        isEphemeral: ephemeral,
         statusSummary: activity.map {
             KandevStatusSummary(lastActivityAt: KandevTimestamp(raw: $0))
         },
@@ -195,20 +197,43 @@ struct TaskListStoreTests {
         #expect(pages == [1, 2])
     }
 
-    /// The server hides ephemeral tasks unless asked, and a quick chat is ephemeral. The
-    /// Chats section is client-side grouping, so without the ask the section is a
-    /// heading nothing ever arrives for.
-    @Test("asks the server for chats, and stops asking in the archive")
-    func asksForChats() async {
+    /// The board is work: the server leaves ephemeral tasks out of it unless asked, and this
+    /// client does not ask — the chats list asks for them instead.
+    @Test("the board does not ask for chats")
+    func boardExcludesChats() async {
         let (store, source) = await loadedStore(tasks: [makeTask(id: "t1", title: "One", stepID: "step-work")])
 
-        #expect(store.query.includeEphemeral)
-        var queries = await source.requestedQueries
-        #expect(queries.last?.includeEphemeral == true, "the first page did not ask for chats")
+        #expect(store.query.includeEphemeral == false)
+        #expect(store.query.onlyEphemeral == false)
+        let queries = await source.requestedQueries
+        #expect(queries.last?.includeEphemeral == false)
+        #expect(queries.last?.onlyEphemeral == false)
+    }
 
-        await store.setShowingArchived(true)
+    /// The two lists are two requests. A client that split one page into two would be guessing
+    /// at a page boundary, and the server is the one that decides what is ephemeral.
+    @Test("switching to chats asks the server for a different list")
+    func switchingToChats() async {
+        let (store, source) = await loadedStore(tasks: [
+            makeTask(id: "t1", title: "Work", stepID: "step-work"),
+        ])
+        #expect(store.layout == .tasks)
+        var queries = await source.requestedQueries
+        #expect(queries.last?.onlyEphemeral == false)
+
+        await source.setTasks([makeTask(id: "c1", title: "A chat", stepID: nil, ephemeral: true)])
+        await store.setLayout(.chats)
+
+        #expect(store.layout == .chats)
+        #expect(store.rows.map(\.id) == ["c1"])
         queries = await source.requestedQueries
-        #expect(queries.last?.includeEphemeral == false, "the archive is not the place for chats")
+        #expect(queries.last?.onlyEphemeral == true)
+
+        // And back, so the board is not the chats list left behind.
+        await source.setTasks([makeTask(id: "t1", title: "Work", stepID: "step-work")])
+        await store.setLayout(.tasks)
+        queries = await source.requestedQueries
+        #expect(queries.last?.onlyEphemeral == false)
     }
 
     /// The next page has to be the same list as the page it appends to. It used to be
@@ -228,7 +253,7 @@ struct TaskListStoreTests {
         let pages = await source.requestedPages
         #expect(pages == [1, 2])
         #expect(queries.last?.page == 2)
-        #expect(queries.last?.includeEphemeral == true)
+        #expect(queries.last?.onlyEphemeral == false)
         #expect(queries.last?.archived == .active)
     }
 

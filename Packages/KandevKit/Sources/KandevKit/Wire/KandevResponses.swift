@@ -88,6 +88,11 @@ public struct KandevTaskListQuery: Sendable, Equatable {
     /// hides them. A list that shows them has to ask: the grouping is not enough on its
     /// own, and a chat the server never sent cannot be grouped.
     public var includeEphemeral: Bool
+    /// Whether ephemeral tasks are the *only* thing returned.
+    ///
+    /// The two lists are two requests: the server decides what is ephemeral, and a client that
+    /// filtered one page into two would be guessing at a page boundary.
+    public var onlyEphemeral: Bool
 
     public init(
         page: Int? = nil,
@@ -98,7 +103,8 @@ public struct KandevTaskListQuery: Sendable, Equatable {
         repositoryID: String? = nil,
         archived: ArchiveMode = .active,
         excludeConfig: Bool = true,
-        includeEphemeral: Bool = false
+        includeEphemeral: Bool = false,
+        onlyEphemeral: Bool = false
     ) {
         self.page = page
         self.pageSize = pageSize
@@ -109,6 +115,7 @@ public struct KandevTaskListQuery: Sendable, Equatable {
         self.archived = archived
         self.excludeConfig = excludeConfig
         self.includeEphemeral = includeEphemeral
+        self.onlyEphemeral = onlyEphemeral
     }
 
     var queryItems: [URLQueryItem] {
@@ -127,7 +134,11 @@ public struct KandevTaskListQuery: Sendable, Equatable {
         if let repositoryID { items.append(URLQueryItem(name: "repository_id", value: repositoryID)) }
         items.append(contentsOf: archived.queryItems)
         if excludeConfig { items.append(URLQueryItem(name: "exclude_config", value: "true")) }
-        if includeEphemeral { items.append(URLQueryItem(name: "include_ephemeral", value: "true")) }
+        if onlyEphemeral {
+            items.append(URLQueryItem(name: "only_ephemeral", value: "true"))
+        } else if includeEphemeral {
+            items.append(URLQueryItem(name: "include_ephemeral", value: "true"))
+        }
         return items
     }
 }
