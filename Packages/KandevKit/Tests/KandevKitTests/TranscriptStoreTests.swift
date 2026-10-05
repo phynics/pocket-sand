@@ -279,35 +279,38 @@ struct TranscriptCondensingStoreTests {
         return store
     }
 
-    /// Everything but the newest turn, because the only work you are following is
-    /// the work happening now.
-    @Test("condenses every turn but the last")
-    func condensesAllButTheLast() async {
+    /// Everything but the turn being written, because the work you are following is the
+    /// work happening now.
+    @Test("condenses every turn but the one being written")
+    func condensesAllButTheWorkingTurn() async {
         let store = await loaded(turns: 3)
 
-        #expect(store.isCondensedByDefault(turnID: "turn-0"))
-        #expect(store.isCondensedByDefault(turnID: "turn-1"))
-        #expect(store.isCondensedByDefault(turnID: "turn-2") == false)
+        #expect(store.isCondensedByDefault(turnID: "turn-0", working: true))
+        #expect(store.isCondensedByDefault(turnID: "turn-1", working: true))
+        #expect(store.isCondensedByDefault(turnID: "turn-2", working: true) == false)
     }
 
-    @Test("a transcript with one turn condenses nothing")
-    func singleTurnStaysOpen() async {
+    /// A finished turn folds as soon as its work stops — the newest included, which is the
+    /// one a person is most likely to be looking at.
+    @Test("a finished turn folds, even the newest")
+    func finishedTurnFolds() async {
         let store = await loaded(turns: 1)
 
-        #expect(store.isCondensedByDefault(turnID: "turn-0") == false)
+        #expect(store.isCondensedByDefault(turnID: "turn-0", working: false))
     }
 
-    /// A turn arriving live becomes the newest, so the one that was open folds.
-    @Test("the newest turn folds the one before it")
-    func condensingFollowsTheNewest() async {
+    /// A turn arriving live becomes the one being written, so the one that was open
+    /// folds.
+    @Test("the turn being written folds the one before it")
+    func condensingFollowsTheWorkingTurn() async {
         let store = await loaded(turns: 1)
-        #expect(store.isCondensedByDefault(turnID: "turn-0") == false)
+        #expect(store.isCondensedByDefault(turnID: "turn-0", working: true) == false)
 
         store.upsert(
             KandevMessage(id: "u9", authorType: "user", type: "message", content: "next", turnID: "turn-9")
         )
 
-        #expect(store.isCondensedByDefault(turnID: "turn-0"))
-        #expect(store.isCondensedByDefault(turnID: "turn-9") == false)
+        #expect(store.isCondensedByDefault(turnID: "turn-0", working: true))
+        #expect(store.isCondensedByDefault(turnID: "turn-9", working: true) == false)
     }
 }

@@ -57,6 +57,23 @@ struct TranscriptRowTests {
         #expect(row.kind == .prompt)
     }
 
+    /// The time the server sent with a row, which is how a long wait becomes visible.
+    @Test("keeps the time the server sent with a row")
+    func keepsTheTime() throws {
+        let row = try #require(
+            TranscriptRow(
+                message: message(
+                    author: "agent",
+                    type: "tool_execute",
+                    content: "ls",
+                    at: "2026-10-04T21:38:07Z"
+                )
+            )
+        )
+
+        #expect(row.at != nil)
+    }
+
     /// Captured from a live server while an agent worked. `tool_read` was a kind
     /// this client had never seen, and treating it as unknown rendered the word
     /// "read" as a serif headline in the middle of a transcript.
@@ -264,40 +281,45 @@ struct TranscriptCondensingTests {
                 + [row("99", .reply)]
         ).items(condensing: true)
 
-        // The summary sits under the work it counts, which is under the *last* of it:
-        // prose an agent wrote mid-turn keeps its place above, and an answer written
-        // after the final step stays below.
-        #expect(items.map(\.id) == ["1", "9", "steps:s10", "99"], "the words keep their places")
+        // Each run folds where it stands, so the words between two of them keep their
+        // places, and the answer written after the last stays below it.
+        #expect(items.map(\.id) == ["1", "steps:s10", "9", "steps:s20", "99"])
     }
 
-    /// One turn, one control. Two of them meant two sheets onto the same exchange and a
-    /// duration repeated once per run, claiming to be the length of each.
-    @Test("a turn with two runs gets one control, and one duration")
-    func oneControlPerTurn() {
+    /// One control per run. Folding a turn's work together made a long task read as a
+    /// single count, and put one run's length on another run's line.
+    @Test("a turn with two runs gets one control per run")
+    func oneControlPerRun() {
         let rows = [row("1", .prompt)] + steps(7, startingAt: 10) + [row("9", .reply)]
             + steps(7, startingAt: 20)
         let items = TranscriptTurn(id: "t1", rows: rows, duration: 187).items(condensing: true)
 
         let summaries = items.filter { $0.isStepsSummary }
-        #expect(summaries.count == 1)
-        #expect(summaries.first?.stepsSummaryRows?.count == 14, "all of the turn's work")
-        #expect(summaries.first?.stepsSummaryDuration == 187)
+        #expect(summaries.count == 2)
+        #expect(summaries.map { $0.stepsSummaryRows?.count } == [7, 7])
     }
 
-    /// The line says how long it has been going, and whether it is still going.
-    @Test("a running turn is timed from its start, and a finished one by the server")
-    func timesARunningTurnFromItsStart() {
-        let started = Date(timeIntervalSince1970: 1_000_000)
-        let rows = [row("1", .prompt)] + steps(8)
+    /// A run is timed from its own messages: the span includes the time the tools it
+    /// called spent working, which is the part of a long task nobody can see. A run being
+    /// written is timed to now, because the server has not dated an end that has not come.
+    @Test("a run is timed from its own messages, and to now while it runs")
+    func timesARunFromItsMessages() {
+        let start = Date(timeIntervalSince1970: 1_000_000)
 
-        let running = TranscriptTurn(id: "t1", rows: rows, startedAt: started)
-            .items(condensing: false, generating: true, now: started.addingTimeInterval(215))
-        let summary = running.first { $0.isStepsSummary }
-        #expect(summary?.stepsSummaryDuration == 215, "the server has not dated an end that has not come")
+        let finished = [timestamped("s0", start), timestamped("s1", start.addingTimeInterval(90))]
+        #expect(
+            TranscriptTurn(id: "t1", rows: finished).items(condensing: false).last?.stepsSummaryDuration == 90
+        )
 
-        let finished = TranscriptTurn(id: "t1", rows: rows, startedAt: started, duration: 187)
-            .items(condensing: true, generating: false)
-        #expect(finished.first { $0.isStepsSummary }?.stepsSummaryDuration == 187, "the server's clock counts the whole of it")
+        let running = (0..<6).map { timestamped("r\($0)", start.addingTimeInterval(Double($0) * 5)) }
+        let live = TranscriptTurn(id: "t1", rows: running)
+            .items(condensing: false, generating: true, now: start.addingTimeInterval(215))
+            .first { $0.isStepsSummary }
+        #expect(live?.stepsSummaryDuration == 215)
+    }
+
+    private func timestamped(_ id: String, _ at: Date) -> TranscriptRow {
+        TranscriptRow(id: id, kind: .tool, text: id, at: at)
     }
 
     @Test("a short run is left as it is")
@@ -326,15 +348,16 @@ struct RunSummaryTests {
         TranscriptTurn(id: "t1", rows: rows, duration: 187)
     }
 
-    /// During a live turn the last few steps answer "what is it doing", so they stay
-    /// on screen. The rest is a count.
-    @Test("a live turn shows its tail and summarises the rest")
-    func liveTurnShowsItsTail() {
-        let items = turn(machineRows(20)).items(condensing: false)
+    /// During a live run the last few steps answer "what is it doing", so they stay on
+    /// screen. The rest is a count. The tail keeps one extra place for the step being
+    /// written, which is why it shows six rows and not five.
+    @Test("a live run shows its tail and summarises the rest")
+    func liveRunShowsItsTail() {
+        let items = turn(machineRows(20)).items(condensing: false, generating: true)
 
-        #expect(items.count == 6, "five steps and the line under them")
-        #expect(items[0].id == "m15", "the tail starts at the sixteenth")
-        #expect(items[4].id == "m19")
+        #expect(items.count == 7, "six one-liners and the line under them")
+        #expect(items[0].id == "m14", "the tail starts where the six shown begin")
+        #expect(items.last?.isStepsSummary == true)
         #expect(items.last?.stepsSummaryLabel == "Ran 20 commands", "the line goes underneath the work")
     }
 
@@ -342,11 +365,22 @@ struct RunSummaryTests {
     /// view and the fold cannot disagree about which calls are leaving.
     @Test("the tail is the last few rows, and empty when nothing is hidden")
     func theTailIsTheLastFewRows() {
-        #expect(turn(machineRows(20)).tailItems().map(\.id) == ["m15", "m16", "m17", "m18", "m19"])
-        #expect(turn(machineRows(20)).tailItems(generating: true).count == 6,
-                "one more place while the newest step is being written")
-        #expect(turn(machineRows(5)).tailItems().isEmpty, "a run that fits has nothing behind it")
-        #expect(turn(machineRows(3), condensed: true).tailItems().isEmpty)
+        #expect(
+            turn(machineRows(20)).tailItems(generating: true).map(\.id)
+                == ["m14", "m15", "m16", "m17", "m18", "m19"]
+        )
+        #expect(turn(machineRows(5)).tailItems(generating: true).isEmpty, "a run that fits has nothing behind it")
+        #expect(turn(machineRows(20)).tailItems().isEmpty, "a turn nobody is writing has no tail")
+    }
+
+    /// The tense lands on the run still going, not on the ones before it.
+    @Test("only the run being written says it is running")
+    func onlyTheLiveRunIsRunning() {
+        let live = turn(machineRows(20))
+
+        #expect(live.liveSummaryID(generating: true) == "steps:m0")
+        #expect(live.liveSummaryID(generating: false) == nil)
+        #expect(turn(machineRows(5)).liveSummaryID(generating: true) == nil, "a run that fits has no line")
     }
 
     /// What `items` draws and what `tailItems` describes have to be the same rows, or
@@ -368,19 +402,45 @@ struct RunSummaryTests {
 
         #expect(items.count == 1)
         #expect(items[0].stepsSummaryLabel == "Ran 20 commands")
-        #expect(items[0].stepsSummaryDuration == 187, "with the whole run folded, the length belongs on it")
     }
 
-    /// A run that fits is shown, not summarised, and never summarised behind a
-    /// control that would only say "5 steps" about five steps.
-    @Test("a short run is shown rather than summarised")
-    func shortRunsAreShown() {
-        let live = turn(machineRows(5)).items(condensing: false)
+    /// The run being written is shown while it fits: a control reading "5 commands" above
+    /// the five commands it stands for is a door onto the room you are already in.
+    @Test("the run being written is shown while it fits")
+    func liveShortRunIsShown() {
+        let live = turn(machineRows(5)).items(condensing: false, generating: true)
+
         #expect(live.count == 5)
         #expect(live.contains(where: \.isStepsSummary) == false)
+    }
 
-        let finished = turn(machineRows(3), condensed: true).items(condensing: true)
-        #expect(finished.count == 3, "even a finished turn shows work there is little of")
+    /// A single step is its own line whatever its state. Folding "grep …" into "ran a
+    /// command" hides the command behind the words for it.
+    @Test("a run of one is never folded")
+    func aRunOfOneStays() {
+        #expect(turn(machineRows(1)).items(condensing: false).count == 1)
+        #expect(turn(machineRows(1)).items(condensing: false, generating: true).count == 1)
+    }
+
+    /// A finished loop collapses, however short, because that is what finishing means: the
+    /// gist is what it is worth, and the detail is one tap away.
+    @Test("a finished loop is its summary line")
+    func finishedLoopCollapses() {
+        let items = turn(machineRows(3), condensed: true).items(condensing: true)
+
+        #expect(items.count == 1)
+        #expect(items[0].stepsSummaryLabel == "Ran 3 commands")
+    }
+
+    /// A folded repeat still knows the rows it covers, so the sheet can say how long the
+    /// loop took rather than only when it started.
+    @Test("a folded repeat keeps the rows behind it")
+    func repeatKeepsItsRows() {
+        let rows = (0..<3).map { TranscriptRow(id: "r\($0)", kind: .tool, text: "same") }
+
+        let steps = rows.drawnSteps()
+        #expect(steps.count == 1)
+        #expect(steps[0].rows.map(\.id) == ["r0", "r1", "r2"])
     }
 
     /// What the sheet needs from the turn: the message the work answers.

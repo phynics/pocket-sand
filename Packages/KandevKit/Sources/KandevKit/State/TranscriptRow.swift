@@ -42,12 +42,19 @@ public struct TranscriptRow: Sendable, Identifiable, Equatable {
     public var text: String
     /// The server's own status for a tool call, when it sent one.
     public var detail: String?
+    /// When the server said this row happened.
+    ///
+    /// The wait between two rows is the part of a long task nobody can see: a turn that
+    /// ran for half an hour whose messages span three minutes is a gap, and this is where
+    /// that gap is read from. Nil when the server sent no date.
+    public var at: Date?
 
-    public init(id: String, kind: Kind, text: String, detail: String? = nil) {
+    public init(id: String, kind: Kind, text: String, detail: String? = nil, at: Date? = nil) {
         self.id = id
         self.kind = kind
         self.text = text
         self.detail = detail
+        self.at = at
     }
 }
 
@@ -153,97 +160,143 @@ public struct TranscriptTurn: Sendable, Identifiable, Equatable {
     /// steps are not hidden, they are one tap away.
     public static let recentMachineRowLimit = 5
 
-    /// The rows in order, with the turn's work summarised.
+    /// The rows in order, with each run of the turn's work folded as it finishes.
     ///
-    /// One control per turn, because a turn is one question and one answer: the work an
-    /// agent did about a question is a single stretch of it, even when it stopped to
-    /// explain itself in the middle. Two controls meant two sheets onto the same
-    /// exchange, and a duration repeated once per run — "Worked for 3m 7s" claiming to
-    /// be the length of four commands as well as of the fifty that followed.
+    /// A run is a stretch of machine rows with nothing readable between them, and a turn
+    /// can hold several: the agent thinks, acts, explains itself, then acts again. Folding
+    /// per turn put all of that behind one control, so a task that ran for half an hour
+    /// read as a single count and one very long wait.
     ///
-    /// The tail stays where the work ends, so prose an agent wrote mid-turn keeps its
-    /// place between the summary and the steps that came after it.
-    ///
-    /// `generating` means the agent is still writing this turn, and then the newest step
-    /// is drawn as `.liveStep`: a paragraph rather than a one-liner, following the text
-    /// as it grows. The tail keeps its full `recentLimit` of one-liners above it, so the
-    /// live step is in addition to what was already there rather than taking one of its
-    /// places.
+    /// A finished run is its summary line and nothing else. The run being written keeps
+    /// its tail — the last `recentLimit` one-liners — with its summary underneath, and its
+    /// newest step is drawn as `.liveStep`: a paragraph that follows the text as it grows,
+    /// in addition to the tail's places rather than taking one of them. A run of one is
+    /// left alone in either state: a single step is its own line, and folding it away
+    /// would hide a command behind the words "ran a command".
     public func items(
         condensing: Bool,
         recentLimit: Int = TranscriptTurn.recentMachineRowLimit,
         generating: Bool = false,
         now: Date = Date()
     ) -> [TranscriptItem] {
-        let machine = machineRows
         let live = generating && !condensing && rows.last?.isMachineOutput == true
+        let segments = workSegments()
+        let liveRunIndex = live ? segments.lastIndex(where: { $0.isRun }) : nil
 
-        // A turn whose work fits is shown as it is. There is nothing to summarise, and a
-        // control reading "4 commands" above the four commands it stands for is a door
-        // onto the room you are already in.
-        guard machine.count > recentLimit else {
-            let folded = rows.collapsedRepeats()
-            return live ? folded.markingLiveStep() : folded
-        }
-
-        let lastMachineIndex = rows.lastIndex { $0.isMachineOutput }
         var items: [TranscriptItem] = []
-        var tailPlaced = false
-
-        // A running turn is timed from when it started, because the server has not
-        // dated the end of something that has not ended. A finished one is timed by
-        // the server, which is the only clock that counted the whole of it.
-        let elapsed: TimeInterval? = if generating {
-            startedAt.map { now.timeIntervalSince($0) }
-        } else {
-            duration
-        }
-
-        for (index, row) in rows.enumerated() {
-            guard row.isMachineOutput else {
+        for (index, segment) in segments.enumerated() {
+            switch segment {
+            case .prose(let row):
                 items.append(.row(row))
-                continue
-            }
 
-            if !tailPlaced {
-                // The steps still on screen, where the work is happening — but only in
-                // a turn that is open. A folded turn is one line by definition, and the
-                // reason to fold it is that its steps have stopped mattering.
-                if !condensing {
-                    items.append(contentsOf: tailItems(generating: live, recentLimit: recentLimit))
+            case .run(let run):
+                if index == liveRunIndex {
+                    // The tail keeps its places, plus one for the step being written. A
+                    // run short enough to read is shown as it is.
+                    guard run.count > recentLimit else {
+                        items.append(contentsOf: run.collapsedRepeats())
+                        continue
+                    }
+                    items.append(contentsOf: run.suffix(recentLimit + 1).collapsedRepeats())
+                    items.append(summary(for: run, live: true, now: now))
+                } else if run.count > 1 {
+                    // A finished loop is its summary. The gist is what it is worth, and
+                    // the detail is one tap away.
+                    items.append(summary(for: run, live: false, now: now))
+                } else {
+                    items.append(contentsOf: run.collapsedRepeats())
                 }
-                tailPlaced = true
-            }
-
-            if index == lastMachineIndex {
-                // And the line that says how long it has been and how much it has
-                // done, *underneath* the work. It is a conclusion about those steps,
-                // and a conclusion goes last — above them it was a claim about work
-                // that had not happened yet.
-                items.append(
-                    .stepsSummary(
-                        id: "steps:\(machine[0].id)",
-                        rows: machine,
-                        duration: elapsed
-                    )
-                )
             }
         }
-
         return live ? items.markingLiveStep() : items
+    }
+
+    /// The line under a run of work.
+    ///
+    /// Underneath, because it is a conclusion about steps that have happened rather than
+    /// a claim about ones that have not, and its id is the run's first row so the line
+    /// stands still while its numbers roll.
+    private func summary(for run: [TranscriptRow], live: Bool, now: Date) -> TranscriptItem {
+        .stepsSummary(
+            id: "steps:\(run[0].id)",
+            rows: run,
+            duration: runDuration(run, live: live, now: now)
+        )
+    }
+
+    /// The turn's rows as the runs it is made of, with the prose between them left where
+    /// it stands.
+    private func workSegments() -> [WorkSegment] {
+        var segments: [WorkSegment] = []
+        var run: [TranscriptRow] = []
+        for row in rows {
+            if row.isMachineOutput {
+                run.append(row)
+            } else {
+                if !run.isEmpty {
+                    segments.append(.run(run))
+                    run = []
+                }
+                segments.append(.prose(row))
+            }
+        }
+        if !run.isEmpty { segments.append(.run(run)) }
+        return segments
+    }
+
+    /// One thing a turn's rows are made of: work, or the words between it.
+    private enum WorkSegment {
+        case prose(TranscriptRow)
+        case run([TranscriptRow])
+
+        var isRun: Bool {
+            if case .run = self { return true }
+            return false
+        }
+    }
+
+    /// How long a run took, or has been going.
+    ///
+    /// From the run's own messages: the span between its first and its last includes the
+    /// time the tools it called spent working, which is the part of a long task nobody
+    /// can see. A run being written is timed to now, because the server has not dated an
+    /// end that has not come.
+    private func runDuration(_ run: [TranscriptRow], live: Bool, now: Date) -> TimeInterval? {
+        guard let start = run.first?.at else { return nil }
+        if live { return max(0, now.timeIntervalSince(start)) }
+        guard let end = run.last?.at, end > start else { return nil }
+        return end.timeIntervalSince(start)
+    }
+
+    /// The rows of the run being written, if the agent is writing one.
+    public var liveRunRows: [TranscriptRow]? {
+        guard rows.last?.isMachineOutput == true else { return nil }
+        var start = rows.count - 1
+        while start > 0, rows[start - 1].isMachineOutput { start -= 1 }
+        return Array(rows[start...])
+    }
+
+    /// The summary line the run being written carries, so the tense lands on the right
+    /// one: a turn can hold several summaries, and only the last is still going.
+    public func liveSummaryID(
+        generating: Bool = true,
+        recentLimit: Int = TranscriptTurn.recentMachineRowLimit
+    ) -> String? {
+        guard generating, let run = liveRunRows, run.count > recentLimit else { return nil }
+        return "steps:\(run[0].id)"
     }
 
     /// The rows a run keeps on screen while the rest of it is folded into the summary.
     ///
-    /// Empty when the work fits: there is no tail because there is nothing behind it.
-    /// This is the one definition of what that block holds — `items` draws it, and the
-    /// view fades its top edge — so the two cannot drift apart.
+    /// Empty when the work fits, or when no run is being written: there is no tail because
+    /// there is nothing behind it. This is the one definition of what that block holds —
+    /// `items` draws it, and the view fades its top edge — so the two cannot drift apart.
     public func tailItems(
         generating: Bool = false,
         recentLimit: Int = TranscriptTurn.recentMachineRowLimit
     ) -> [TranscriptItem] {
-        guard machineRows.count > recentLimit else { return [] }
-        return Array(machineRows.suffix(recentLimit + (generating ? 1 : 0))).collapsedRepeats()
+        guard generating, let run = liveRunRows, run.count > recentLimit else { return [] }
+        return run.suffix(recentLimit + 1).collapsedRepeats()
     }
 
     /// Whether there is any machine output at all.
@@ -307,13 +360,14 @@ extension Array where Element == TranscriptItem {
 }
 
 extension Array where Element == TranscriptRow {
-    /// Consecutive identical steps, folded into one with a count.
+    /// Consecutive identical steps, folded into one line each, with the rows behind them.
     ///
     /// Only consecutive, and only identical: two runs of the same command either side
     /// of a different step are two events, and folding them would misreport how the
-    /// agent worked.
-    public func collapsedRepeats() -> [TranscriptItem] {
-        var items: [TranscriptItem] = []
+    /// agent worked. The rows are kept because a line that cannot say when its last
+    /// occurrence happened cannot say how long the loop took.
+    public func drawnSteps() -> [TranscriptDrawnStep] {
+        var steps: [TranscriptDrawnStep] = []
         var index = 0
 
         while index < count {
@@ -321,14 +375,35 @@ extension Array where Element == TranscriptRow {
             var end = index + 1
             while end < count, self[end].repeats(first) { end += 1 }
 
-            if end - index > 1 {
-                items.append(.repeated(id: "repeat:\(first.id)", count: end - index, row: first))
-            } else {
-                items.append(.row(first))
-            }
+            let rows = Array(self[index..<end])
+            let item: TranscriptItem = rows.count > 1
+                ? .repeated(id: "repeat:\(first.id)", count: rows.count, row: first)
+                : .row(first)
+            steps.append(TranscriptDrawnStep(item: item, rows: rows))
             index = end
         }
-        return items
+        return steps
+    }
+
+    /// Consecutive identical steps, folded into one with a count.
+    public func collapsedRepeats() -> [TranscriptItem] {
+        drawnSteps().map(\.item)
+    }
+}
+
+/// One line the sheet draws: a step, or a run of identical steps folded into one, and
+/// the rows it stands for.
+public struct TranscriptDrawnStep: Sendable, Identifiable, Equatable {
+    public var item: TranscriptItem
+    /// Every row this line covers, in order. A repeat covers all of them, which is what
+    /// lets a reader see how long a loop took rather than only when it started.
+    public var rows: [TranscriptRow]
+
+    public var id: String { item.id }
+
+    public init(item: TranscriptItem, rows: [TranscriptRow]) {
+        self.item = item
+        self.rows = rows
     }
 }
 
@@ -527,7 +602,8 @@ extension TranscriptRow {
             id: message.id,
             kind: kind,
             text: label,
-            detail: Self.notableStatus(message.metadata?["status"]?.stringValue)
+            detail: Self.notableStatus(message.metadata?["status"]?.stringValue),
+            at: message.createdAt?.date
         )
     }
 }

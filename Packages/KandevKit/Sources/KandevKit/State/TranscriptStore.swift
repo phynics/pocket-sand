@@ -95,13 +95,13 @@ public final class TranscriptStore {
         phase = .loaded
     }
 
-    /// Whether a turn should start folded away.
+    /// Whether a turn starts folded away.
     ///
-    /// Everything but the newest. A transcript that shows the full tool-call
-    /// history of forty finished turns is unreadable, and the only turn whose work
-    /// you are actually following is the current one.
-    public func isCondensedByDefault(turnID: String) -> Bool {
-        turns.last?.id != turnID
+    /// Everything but the turn being written. A finished turn folds as soon as its work
+    /// stops — the reader is following the run in flight, and the history of what the
+    /// agent did is a summary of it.
+    public func isCondensedByDefault(turnID: String, working: Bool) -> Bool {
+        !(working && turns.last?.id == turnID)
     }
 
     /// Merges one message into the open transcript.

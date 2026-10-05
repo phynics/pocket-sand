@@ -118,10 +118,10 @@ struct TranscriptTurnView: View {
                 }
             }
 
-            // The duration sits on the rule at the end of a turn that is on show. A
-            // condensed turn carries it on its summary instead, so folding does not
-            // lose it.
-            if !isCondensed, let duration = turn.duration {
+            // The turn's own length, on its boundary — but only when no run carries one.
+            // A summary already says how long its run took, and a second number under it
+            // was two clocks for one task: "running for 26 minutes" over "3m 26s".
+            if !items.contains(where: \.isStepsSummary), let duration = turnLength(now: now) {
                 HStack(spacing: Theme.Space.snug) {
                     Rule()
                     Text(CompactDuration.label(seconds: duration))
@@ -168,9 +168,15 @@ struct TranscriptTurnView: View {
             .accessibilityHint("Opens this exchange")
 
         case .stepsSummary:
-            StepsSummaryView(item: item, isRunning: isWorking) {
-                guard let rows = item.stepsSummaryRows else { return }
-                onShowSteps(exchange(id: item.id, steps: rows, focus: nil))
+            // Only the run still going says "running for"; the ones before it are done.
+            StepsSummaryView(
+                item: item,
+                isRunning: item.id == turn.liveSummaryID(generating: isWorking)
+            ) {
+                // The whole exchange, not the one run: the sheet is where the work before
+                // and after this loop lives, and a control onto one run would make a third
+                // place to read the same steps.
+                onShowSteps(exchange(id: item.id, steps: turn.machineRows, focus: nil))
             }
 
         case .repeated(let id, let count, let row):
@@ -240,6 +246,17 @@ struct TranscriptTurnView: View {
             case .tail: "tail"
             }
         }
+    }
+
+    /// How long the turn has been going, or took.
+    ///
+    /// To now while it is being written, because the server has not dated an end that has
+    /// not come; the server's own count once it has finished.
+    private func turnLength(now: Date) -> TimeInterval? {
+        if isWorking, let startedAt = turn.startedAt {
+            return max(0, now.timeIntervalSince(startedAt))
+        }
+        return turn.duration
     }
 
     /// One exchange, as the sheet wants it: what was said before, what was asked, the

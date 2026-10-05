@@ -48,6 +48,8 @@ struct TurnStepsView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: Theme.Space.base) {
+                        let steps = content.steps.drawnSteps()
+
                         // The message that asked for the work, for context: steps on their
                         // own say what happened and not what it was for.
                         // The rules are the exchange's joints: what was said before the
@@ -69,36 +71,23 @@ struct TurnStepsView: View {
                             .id(prompt.id)
                         }
 
+                        workSummary
+
                         // Every step, one line each, repeats folded. Nothing is summarised
-                        // away here, because this *is* the summary.
-                        ForEach(content.steps.collapsedRepeats()) { item in
-                            switch item {
-                            case .row(let row):
-                                TranscriptRowView(
-                                    row: row,
-                                    isExpanded: expandedRows.contains(row.id),
-                                    onToggle: { toggle(row.id) },
-                                    stepDetail: .paragraph
-                                )
-                            case .repeated(let id, let count, let row):
-                                RepeatedStepsView(count: count, row: row)
-                                    .id(id)
-                            case .stepsSummary:
-                                EmptyView()
-                            case .liveStep(let row):
-                                // Not a state the sheet has: a step is only "live" in the
-                                // transcript. Drawn as the row it is, because dropping a
-                                // step would make the list a lie about what happened.
-                                TranscriptRowView(
-                                    row: row,
-                                    isExpanded: expandedRows.contains(row.id),
-                                    onToggle: { toggle(row.id) },
-                                    stepDetail: .paragraph
-                                )
+                        // away here, because this *is* the summary. A long wait between two
+                        // of them is drawn, so the time a task spent inside one tool call is
+                        // on the page rather than hidden in a gap nobody can see.
+                        ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
+                            if let gap = wait(before: index, in: steps) {
+                                WaitingLine(seconds: gap)
                             }
+                            stepView(step.item)
                         }
 
                         if let reply = content.reply {
+                            if let gap = waitBeforeReply {
+                                WaitingLine(seconds: gap)
+                            }
                             Rule()
                             TranscriptRowView(row: reply, isExpanded: false)
                                 .id(reply.id)
@@ -144,6 +133,108 @@ struct TurnStepsView: View {
         } else {
             expandedRows.insert(id)
         }
+    }
+
+    // MARK: - The work
+
+    /// One line of work, drawn by what it is.
+    @ViewBuilder private func stepView(_ item: TranscriptItem) -> some View {
+        switch item {
+        case .row(let row):
+            TranscriptRowView(
+                row: row,
+                isExpanded: expandedRows.contains(row.id),
+                onToggle: { toggle(row.id) },
+                stepDetail: .paragraph
+            )
+        case .repeated(let id, let count, let row):
+            RepeatedStepsView(count: count, row: row)
+                .id(id)
+        case .liveStep(let row):
+            // Not a state the sheet has: a step is only "live" in the transcript. Drawn as
+            // the row it is, because dropping a step would make the list a lie about what
+            // happened.
+            TranscriptRowView(
+                row: row,
+                isExpanded: expandedRows.contains(row.id),
+                onToggle: { toggle(row.id) },
+                stepDetail: .paragraph
+            )
+        case .stepsSummary:
+            EmptyView()
+        }
+    }
+
+    /// What the work added up to, and how long the whole of it took.
+    ///
+    /// The transcript's folded line says this about one run; this says it about the
+    /// exchange the sheet is, which is what someone opening it came for.
+    @ViewBuilder private var workSummary: some View {
+        if let label = TranscriptRow.workSummary(content.steps) {
+            HStack(alignment: .firstTextBaseline, spacing: Theme.Space.snug) {
+                Text(label)
+                    .font(Theme.Face.chrome(.footnote, weight: .medium))
+                    .foregroundStyle(Theme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let span = workSpan {
+                    Text(CompactDuration.label(seconds: span))
+                        .font(Theme.Face.machine(.caption2))
+                        .foregroundStyle(Theme.muted)
+                        .monospacedDigit()
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// The span of the work's own messages: the time the exchange spent on it.
+    private var workSpan: TimeInterval? {
+        guard let first = content.steps.first?.at,
+              let last = content.steps.last?.at,
+              last > first
+        else { return nil }
+        return last.timeIntervalSince(first)
+    }
+
+    /// The pause before the line at `index`, when it was long enough to be worth saying.
+    private func wait(before index: Int, in steps: [TranscriptDrawnStep]) -> TimeInterval? {
+        let previousAt = index > 0 ? steps[index - 1].rows.last?.at : content.prompt?.at
+        guard let from = previousAt, let to = steps[index].rows.first?.at else { return nil }
+        return Self.noticeableWait(from: from, to: to)
+    }
+
+    /// The pause between the last step and the answer.
+    private var waitBeforeReply: TimeInterval? {
+        guard let from = content.steps.last?.at, let to = content.reply?.at else { return nil }
+        return Self.noticeableWait(from: from, to: to)
+    }
+
+    /// A gap worth drawing, or nil.
+    ///
+    /// One minute. Below that a pause reads as the work continuing; above it, it is the
+    /// thing a long task is made of and the reason a two-line exchange can have taken
+    /// half an hour.
+    private static func noticeableWait(from: Date, to: Date) -> TimeInterval? {
+        let gap = to.timeIntervalSince(from)
+        return gap >= 60 ? gap : nil
+    }
+}
+
+/// A long pause between two steps, drawn so the time that went past is on the page.
+private struct WaitingLine: View {
+    let seconds: TimeInterval
+
+    var body: some View {
+        HStack(spacing: Theme.Space.snug) {
+            Rule()
+            Text("Waited \(CompactDuration.label(seconds: seconds))")
+                .font(Theme.Face.machine(.caption2))
+                .foregroundStyle(Theme.muted)
+                .monospacedDigit()
+                .fixedSize()
+            Rule()
+        }
+        .accessibilityLabel("Waited \(CompactDuration.spoken(seconds: seconds))")
     }
 }
 

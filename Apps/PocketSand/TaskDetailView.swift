@@ -351,10 +351,14 @@ struct TaskDetailView: View {
             )
         } else {
             ForEach(Array(transcript.turns.enumerated()), id: \.element.id) { index, turn in
+                // Only the turn being written has live work in it. Handing the screen's
+                // working state to every turn gave each of them a timer and a run that
+                // looked live.
+                let isLiveTurn = index == transcript.turns.count - 1 && isWorking
                 TranscriptTurnView(
                     turn: turn,
-                    isCondensed: transcript.isCondensedByDefault(turnID: turn.id),
-                    isWorking: isWorking,
+                    isCondensed: transcript.isCondensedByDefault(turnID: turn.id, working: isWorking),
+                    isWorking: isLiveTurn,
                     previousReply: transcript.turns.reply(preceding: index),
                     expandedRows: $expandedRows,
                     onShowSteps: { stepsContent = $0 }
