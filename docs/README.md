@@ -10,6 +10,7 @@ the document is what needs fixing.
 | [`../CONTEXT.md`](../CONTEXT.md) | What the words mean. The glossary, and the naming rules that follow from it. |
 | [`../AGENTS.md`](../AGENTS.md) | How to work in this repo: boundaries, the protocol pin, how to verify. Written for a person or an agent picking it up cold. |
 | [`design.md`](design.md) | What the app looks like and why — the palette, the three voices, glass, and the things that were tried and rejected. |
+| [`features.md`](features.md) | What the server can do, what the first-party clients do with it, and what this app does. A tracker, not a roadmap. |
 | [`adr/`](adr) | Decisions that are expensive to reverse, one per file, with the alternatives that were considered. |
 | [`reference/`](reference) | Upstream documents, vendored so they can be read offline. Not ours, and not necessarily current. |
 
@@ -34,3 +35,6 @@ the document is what needs fixing.
   commit it was taken from. Say where it came from and how stale it is; the
   server's `/ws` reference here documents an older surface than the server sends,
   and that is worth knowing before trusting it.
+- **A capability that exists on the server and not here** goes in `features.md`, as
+  a row in the area it belongs to. Update the row rather than adding one; the
+  document is only worth reading while each row is still true.
