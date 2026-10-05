@@ -19,6 +19,9 @@ public struct KandevTaskDraft: Sendable, Equatable {
     /// promise an agent starts now: whether one does is the workflow step's
     /// decision, and the server makes it.
     public var agentProfileID: String?
+    /// The repositories this work belongs to. Empty means the workspace's own, which
+    /// is what the server assumes when the field is absent.
+    public var repositoryIDs: [String]
 
     public init(
         workspaceID: String,
@@ -26,7 +29,8 @@ public struct KandevTaskDraft: Sendable, Equatable {
         stepID: String? = nil,
         title: String,
         brief: String? = nil,
-        agentProfileID: String? = nil
+        agentProfileID: String? = nil,
+        repositoryIDs: [String] = []
     ) {
         self.workspaceID = workspaceID
         self.workflowID = workflowID
@@ -34,6 +38,7 @@ public struct KandevTaskDraft: Sendable, Equatable {
         self.title = title
         self.brief = brief
         self.agentProfileID = agentProfileID
+        self.repositoryIDs = repositoryIDs
     }
 
     var payload: JSONValue {
@@ -45,6 +50,11 @@ public struct KandevTaskDraft: Sendable, Equatable {
         if let stepID { members["workflow_step_id"] = .string(stepID) }
         if let brief, !brief.isEmpty { members["description"] = .string(brief) }
         if let agentProfileID { members["agent_profile_id"] = .string(agentProfileID) }
+        // Left off rather than sent empty, so the workspace's own repositories are
+        // used and the server is not told "none" when the answer is "whichever".
+        if !repositoryIDs.isEmpty {
+            members["repositories"] = .array(repositoryIDs.map { .string($0) })
+        }
         return .object(members)
     }
 }

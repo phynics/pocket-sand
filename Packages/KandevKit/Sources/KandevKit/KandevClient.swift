@@ -132,6 +132,13 @@ public struct KandevClient: Sendable {
         )
     }
 
+    public func repositories(workspaceID: String) async throws -> [KandevRepository] {
+        try await http.get(
+            KandevHTTPRoute.workspaceRepositories(workspaceID: workspaceID),
+            as: KandevRepositoryList.self
+        ).repositories
+    }
+
     public func sessions(taskID: String) async throws -> [KandevSession] {
         try await http.get(
             KandevHTTPRoute.taskSessions(taskID: taskID),

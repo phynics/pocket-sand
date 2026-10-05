@@ -10,6 +10,8 @@ public protocol KandevTaskSource: Sendable {
     func workflows(workspaceID: String) async throws -> [KandevWorkflow]
     func workflowSteps(workflowID: String) async throws -> [KandevWorkflowStep]
     func tasks(workspaceID: String, query: KandevTaskListQuery) async throws -> KandevTaskList
+    /// The workspace's repositories, for choosing which one work belongs to.
+    func repositories(workspaceID: String) async throws -> [KandevRepository]
 }
 
 extension KandevClient: KandevTaskSource {}

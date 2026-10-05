@@ -82,12 +82,12 @@ struct NewTaskStoreTests {
         await store.loadOptions()
         #expect(store.canFile == false, "a workflow alone is not a task")
 
-        store.title = "   "
+        store.brief = "   "
         #expect(store.canFile == false, "whitespace is not a title")
 
-        store.title = "Implement the thing"
+        store.brief = "Implement the thing"
         #expect(store.canFile)
-        #expect(store.brief.isEmpty, "a brief is optional")
+        #expect(store.title == "Implement the thing", "the name comes from the sentence")
     }
 
     /// Filing is one decision, so choosing a workflow and a step together is one
@@ -111,7 +111,6 @@ struct NewTaskStoreTests {
     func creates() async {
         let (store, _, creator, _) = await store()
         await store.loadOptions()
-        store.title = "  Implement the thing  "
         store.brief = "  Do exactly this.  "
         store.stepID = "s-work"
         store.agentProfileID = "p1"
@@ -121,7 +120,7 @@ struct NewTaskStoreTests {
         #expect(task?.id == "new-1")
         #expect(store.createdTask?.id == "new-1")
         let draft = await creator.lastDraft()
-        #expect(draft?.title == "Implement the thing", "the title should be trimmed")
+        #expect(draft?.title == "Do exactly this.", "named from the sentence, and trimmed")
         #expect(draft?.brief == "Do exactly this.")
         #expect(draft?.workspaceID == "w1")
         #expect(draft?.workflowID == "wf1")
@@ -146,7 +145,6 @@ struct NewTaskStoreTests {
     func refusedCreationIsReported() async {
         let (store, _, creator, _) = await store()
         await store.loadOptions()
-        store.title = "Implement the thing"
         store.brief = "Do exactly this."
         await creator.failNext(
             with: KandevError.action(
@@ -158,7 +156,7 @@ struct NewTaskStoreTests {
 
         #expect(task == nil)
         #expect(store.createdTask == nil)
-        #expect(store.title == "Implement the thing", "losing typed text on a failure is the worst outcome here")
+        #expect(store.title == "Do exactly this.", "losing typed text on a failure is the worst outcome here")
         #expect(store.brief == "Do exactly this.")
         #expect(store.phase == .failed("workflow_id is required"))
     }
@@ -169,7 +167,7 @@ struct NewTaskStoreTests {
         let source = FakeTaskSource()
         await source.setWorkspaces([])
         let store = NewTaskStore(taskSource: source, creator: creator)
-        store.title = "Typed before loading finished"
+        store.brief = "Typed before loading finished"
 
         await store.loadOptions()
 
@@ -298,27 +296,32 @@ struct NewTaskDoorTests {
         return (store, chats)
     }
 
-    @Test("a title writes itself from the brief")
-    func titleWritesItself() async {
+    @Test("the name is the first few words, not the whole sentence")
+    func titleIsTheFirstFewWords() async {
         let (store, _) = await store()
 
-        store.brief = "Fix the flaky test in the auth suite"
-        #expect(store.title == "Fix the flaky test in the auth suite")
+        store.brief = "Fix the flaky test"
+        #expect(store.title == "Fix the flaky test", "short enough to keep whole")
+
+        store.brief = "Fix the flaky test in the auth suite before the release"
+        #expect(store.title == "Fix the flaky test in the…", "and cut at a word")
 
         store.brief = "Fix the flaky test in the auth suite\nAnd add a regression test"
-        #expect(store.title == "Fix the flaky test in the auth suite", "only the first line")
+        #expect(store.title == "Fix the flaky test in the…", "only the first line")
     }
 
-    @Test("and stops writing itself the moment someone edits it")
-    func titleYieldsToEdits() async {
+    @Test("and follows the sentence rather than being a second thing to fill in")
+    func titleFollowsTheSentence() async {
         let (store, _) = await store()
 
         store.brief = "Fix the flaky test"
         #expect(store.title == "Fix the flaky test")
 
-        store.title = "Flaky auth test"
-        store.brief = "Fix the flaky test\nSomething else entirely"
-        #expect(store.title == "Flaky auth test", "an edited title is the person's, not ours")
+        store.brief = "Something else entirely"
+        #expect(store.title == "Something else entirely", "there is one input, and this is it")
+
+        store.brief = ""
+        #expect(store.title.isEmpty)
     }
 
     @Test("a derived title drops markdown markers and cuts at a word")
@@ -331,9 +334,8 @@ struct NewTaskDoorTests {
         let long = NewTaskStore.derivedTitle(
             from: "Fix the flaky test in the auth suite before the release on Friday"
         )
-        #expect(long.hasSuffix("…"), "a long title is marked as cut")
-        #expect(long.count <= 61)
-        #expect(!long.contains("  "), "and cut at a space rather than mid-word")
+        #expect(long == "Fix the flaky test in the…", "a title is a name, not a sentence")
+        #expect(!long.contains("  "), "and cut at a word rather than mid-word")
     }
 
     @Test("a chat needs an agent and a sentence, and no workflow at all")
@@ -432,5 +434,52 @@ struct NewTaskDoorTests {
         #expect(store.needsAgentProfile, "which is what the setup chat is for")
         store.brief = "Do something"
         #expect(store.canAsk == false, "and neither door can open")
+    }
+}
+
+@MainActor
+@Suite("NewTaskStore, repositories")
+struct NewTaskRepositoryTests {
+    @Test("reads the workspace's repositories, and sends the one that was chosen")
+    func repositoryIsChosenAndSent() async {
+        let source = FakeTaskSource()
+        await source.setWorkspaces([
+            KandevWorkspace(id: "w1", name: "Default Workspace", scopes: []),
+        ])
+        await source.setWorkflows([KandevWorkflow(id: "wf1", name: "Development", sortOrder: 0)])
+        await source.setSteps(
+            [KandevWorkflowStep(id: "s-backlog", name: "Backlog", position: 0)],
+            forWorkflow: "wf1"
+        )
+        await source.setRepositories([
+            KandevRepository(id: "r1", name: "pocket-sand", sourceType: "local", localPath: "/dev/pocket-sand"),
+            KandevRepository(id: "r2", name: "kandev", sourceType: "github", provider: "github"),
+        ])
+        let creator = StubTaskCreator()
+        let store = NewTaskStore(taskSource: source, creator: creator, workspaceID: "w1")
+
+        await store.loadOptions()
+        #expect(store.repositories.map(\.id) == ["r1", "r2"])
+
+        store.brief = "Fix the flaky test"
+        #expect(store.repositoryID == nil, "the workspace's own is the default")
+
+        store.repositoryID = "r2"
+        await store.create()
+
+        let draft = await creator.lastDraft()
+        #expect(draft?.repositoryIDs == ["r2"])
+    }
+
+    @Test("a repository with no name is described by where it is")
+    func originNamesARepository() {
+        let local = KandevRepository(id: "r1", sourceType: "local", localPath: "/dev/thing")
+        #expect(local.origin == "/dev/thing")
+
+        let hosted = KandevRepository(id: "r2", sourceType: "github", provider: "github")
+        #expect(hosted.origin == "github")
+
+        let bare = KandevRepository(id: "r3")
+        #expect(bare.origin == "unknown")
     }
 }

@@ -109,6 +109,16 @@ public final class TaskListStore {
             // have read them already, in which case this costs nothing.
             try await catalogue.load(workspaceID: workspace.id)
 
+            // Read for their names, so a section can say which project it is. A
+            // failure here is not a failed list: a heading falls back to "Project".
+            if let repositories = try? await source.repositories(workspaceID: workspace.id) {
+                repositoryNames = Dictionary(
+                    uniqueKeysWithValues: repositories.map { repository in
+                        (repository.id, repository.name.isEmpty ? repository.origin : repository.name)
+                    }
+                )
+            }
+
             nextPage = 1
             let page = try await source.tasks(workspaceID: workspace.id, query: query)
             tasks = page.tasks
@@ -284,6 +294,76 @@ public final class TaskListStore {
         }
         return first
     }
+
+    /// One group of rows: a heading, and the rows under it.
+    public struct Section: Identifiable, Equatable {
+        public var id: String
+        /// `nil` when the list is not grouped at all, so a workspace with nothing to
+        /// group by looks exactly like a list.
+        public var title: String?
+        public var rows: [TaskRow]
+        /// Whether this section holds conversations rather than work.
+        public var isChats: Bool = false
+    }
+
+    /// The list as it is drawn: conversations first, then a section per repository.
+    ///
+    /// Chats first because they are the most recent thing someone was doing, and
+    /// because a chat is where a task that matters often starts. The order inside a
+    /// section is the server's, with subtasks under their parents, so grouping never
+    /// reshuffles what the server said was most recent.
+    ///
+    /// A workspace with one repository and no chats gets one untitled section, which
+    /// is the flat list this screen has always been.
+    public var sections: [Section] {
+        var chats: [TaskRow] = []
+        var byRepository: [String: [TaskRow]] = [:]
+        var repositoryOrder: [String] = []
+        var unassigned: [TaskRow] = []
+
+        for row in rows {
+            if row.isEphemeral {
+                chats.append(row)
+                continue
+            }
+            guard let repositoryID = row.repositoryID else {
+                unassigned.append(row)
+                continue
+            }
+            if byRepository[repositoryID] == nil { repositoryOrder.append(repositoryID) }
+            byRepository[repositoryID, default: []].append(row)
+        }
+
+        var sections: [Section] = []
+        if !chats.isEmpty {
+            sections.append(Section(id: "chats", title: "Chats", rows: chats, isChats: true))
+        }
+        for repositoryID in repositoryOrder {
+            sections.append(
+                Section(
+                    id: repositoryID,
+                    title: repositoryNames[repositoryID] ?? "Project",
+                    rows: byRepository[repositoryID] ?? []
+                )
+            )
+        }
+        if !unassigned.isEmpty {
+            // Titled only when something else is on screen: a heading over the only
+            // section is a label that says nothing.
+            sections.append(
+                Section(
+                    id: "none",
+                    title: sections.isEmpty ? nil : "No project",
+                    rows: unassigned
+                )
+            )
+        }
+        return sections
+    }
+
+    /// Repository id to name, read with the tasks so a heading can say which project
+    /// a section is.
+    public private(set) var repositoryNames: [String: String] = [:]
 
     private func rebuildRows() {
         let built = tasks.map { TaskRow(task: $0, steps: catalogue.stepsByID) }

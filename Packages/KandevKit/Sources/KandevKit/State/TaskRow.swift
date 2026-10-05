@@ -45,6 +45,10 @@ public struct TaskRow: Sendable, Identifiable, Equatable, Hashable {
     /// hiding it.
     public var depth: Int
     public var lastActivity: Date?
+    /// The repository this task belongs to, for grouping the list by project.
+    public var repositoryID: String?
+    /// Whether this row is a conversation rather than work.
+    public var isEphemeral: Bool
 
     public init(
         id: String,
@@ -57,7 +61,9 @@ public struct TaskRow: Sendable, Identifiable, Equatable, Hashable {
         isAwaitingAnswer: Bool = false,
         parentID: String? = nil,
         depth: Int = 0,
-        lastActivity: Date?
+        lastActivity: Date?,
+        repositoryID: String? = nil,
+        isEphemeral: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -70,6 +76,8 @@ public struct TaskRow: Sendable, Identifiable, Equatable, Hashable {
         self.parentID = parentID
         self.depth = depth
         self.lastActivity = lastActivity
+        self.repositoryID = repositoryID
+        self.isEphemeral = isEphemeral
     }
 }
 
@@ -99,7 +107,12 @@ extension TaskRow {
             isFailed: task.isFailed,
             isAwaitingAnswer: task.isAwaitingAnswer,
             parentID: task.parentID,
-            lastActivity: task.lastActivity?.date
+            lastActivity: task.lastActivity?.date,
+            // The first repository a task is attached to. A task can carry several;
+            // the first is the one the first-party client shows beside it, and
+            // grouping by all of them would put one task in two sections.
+            repositoryID: task.repositories?.first?.repositoryID,
+            isEphemeral: task.isEphemeral == true
         )
     }
 }

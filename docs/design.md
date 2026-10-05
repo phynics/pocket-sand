@@ -251,40 +251,67 @@ with modes, and the story it tells is this:
 > Everything starts as a sentence. Two doors keep it; the third fixes what is in
 > the way.
 
-**The sentence comes first**, because the server makes it the agent's first
-message, word for word — creating a task and starting a conversation are the same
-act, and a form that asks for a title before it asks what you want done has the
-order backwards. The title writes itself from the sentence's first line until
-someone edits it, and then it stops.
+**There is one input.** The server makes the sentence the agent's first message,
+word for word, so the sentence is the only thing anyone has to write — and the
+task's name is taken from its first few words rather than asked for. A screen with
+one field is a screen where nobody has to work out which field is which, which is
+what the first version got wrong: two serif placeholders, no labels, and no way to
+tell the title from the prompt.
 
-**What is left is not a form.** It is two statements about what will happen, each
-one tap from being changed:
+**The doors are at the top, named.** A chat is not a hidden gesture and the setup
+chat is not something you have to be stuck to find:
 
 ```
    ✕                                            Create
-   What needs doing?
+   Task          Chat          Setup              the chosen one in ink, ruled
+   ─────────
+   What needs doing?                              the label, above the field
    ┌────────────────────────────────────────────┐
-   │ Fix the flaky test in the auth suite       │   serif, title3
-   └────────────────────────────────────────────┘
-   ┌────────────────────────────────────────────┐
-   │ Fix the flaky test in the auth suite       │   the title, written for you
-   └────────────────────────────────────────────┘
-   ──────────────────────────────────────────────
-   Filed in   Development · Backlog           ⌄   sans: the app's promise
-   Agent      Claude Code                     ⌄
-   ──────────────────────────────────────────────
-   Just ask instead                               the other door
+   │ Fix the flaky test in the auth suite       │  the well: a field is the one
+   └────────────────────────────────────────────┘  filled thing in this app
+   The agent receives this as its first message, word for word.
+
+   Where it goes
+   Filed in    Development · its start step   ⌄   ans answer in ink, chevron in ink
+   Agent       Claude Code                    ⌄
+   Repository  None configured                    a statement, not an empty menu
 ```
 
-Filing is **one decision, not two**, so it is one row opening one menu of
-workflows and their steps — not four pickers. Both rows show an answer rather
-than asking a question, and both answers were chosen before anyone arrived.
+Filing is **one decision, not two**, so it is one row opening one menu of workflows
+and their steps — not four pickers. Every row shows an answer rather than asking a
+question, and every answer was chosen before anyone arrived.
 
-**The type says which lines are yours.** The sentence is New York, the largest
-thing on the screen, because it is the only thing that is yours. The two rows are
-SF Pro in the app's own voice, labels muted and answers in ink. That is the same
-grammar as the transcript — serif is a person, sans is the agent and the chrome —
-so the screen needs no legend.
+**The type says which lines are yours.** The sentence is New York, inside the app's
+own field well, because it is the only thing that is yours. The rows are SF Pro in
+the app's own voice, labels muted and answers in ink. That is the same grammar as
+the transcript — serif is a person, sans is the agent and the chrome — so the screen
+needs no legend.
+
+**A field is the one filled container this app has.** No cards anywhere, but a field
+is a container for your words, and the composer established the shape first. The
+create screen uses the same well rather than a bare line of serif text, because a
+placeholder on paper with no border is not a place — it is words that happen to be
+there.
+
+### What the first version got wrong
+
+Built, then looked at, then rebuilt. Both rounds of mistakes are worth keeping:
+
+- **Two unlabelled fields.** A large serif placeholder asking "What needs doing?"
+  above a smaller one saying "Title", with no labels. Which one is the prompt? Which
+  is the name? Neither, apparently, and the second placeholder disappeared the moment
+  anyone typed in the first. There is one field now, and its label is a label.
+- **Nothing looked like a field.** Removing the card removed the affordance with it: a
+  placeholder on paper is text, not a place to type. The wells came back.
+- **The title was a field at all.** The server requires a title, and the first few
+  words of the sentence are a better one than anything anyone would type twice.
+- **The doors were at the bottom.** Under the fold, and one of them behind the
+  keyboard, so the "other ways to start" were invisible on the screen whose whole
+  argument they are.
+- **The workflow row did not look pickable.** Muted chevron on a muted value: nobody
+  knew the workflow could be changed. The answer in ink and the chevron in ink.
+- **A menu that opened onto nothing.** A workspace with no repositories got an empty
+  menu. It gets a statement and the way to fix it instead.
 
 ### What was rejected
 
@@ -306,6 +333,10 @@ so the screen needs no legend.
 - **The helper text under the brief.** It explained that the brief becomes the
   first message, which the screen now *is*. It shows only while the field is
   empty, and then gets out of the way.
+- **A title field, in the end.** Kept at first on the grounds that a task cannot be
+  renamed yet, so a title nobody could edit was a trap. But the title is derived from
+  the sentence and the server can generate a real one with an agent, so the trap was
+  the field, not the absence of one.
 
 ### What looking at it changed
 
@@ -329,6 +360,14 @@ of reading the code would have shown:
 The three notes on the screen are each triggered by a state — the field is empty,
 the agent is unconfirmed, the door is disabled — so in the ordinary case at most
 one of them is showing.
+
+### When there is no repository
+
+The same argument as the setup chat, one step smaller: a workspace with no
+repositories gets a statement — *"None configured"* — and a note naming **Setup** as
+the way to add one, which is where the setup chat can create a GitHub repository or a
+path on the machine running Kandev. A control that opens onto nothing is worse than
+no control.
 
 ### When nothing is set up
 

@@ -20,44 +20,39 @@ public final class NewTaskStore {
         case failed(String)
     }
 
-    /// The task's name. Written from the brief until someone edits it, because a
-    /// task needs a title and nobody wants to write the same sentence twice.
-    public var title = "" {
-        didSet {
-            guard !isDerivingTitle else { return }
-            titleIsDerived = false
-        }
-    }
+    /// The task's name, taken from the sentence rather than asked for.
+    ///
+    /// Not a field. The server requires a title, and the first few words of what
+    /// someone asked for name the work better than anything they would want to type
+    /// twice — and a screen with one input is a screen where nobody has to work out
+    /// which input is which. The server can name a task properly with an agent when
+    /// it creates one; this is the stand-in until then.
+    public private(set) var title = ""
 
     /// What needs doing, in the words of whoever wants it done. The server sends
     /// this to the agent as the first message, word for word.
     public var brief = "" {
-        didSet {
-            guard titleIsDerived else { return }
-            isDerivingTitle = true
-            title = Self.derivedTitle(from: brief)
-            isDerivingTitle = false
-        }
+        didSet { title = Self.derivedTitle(from: brief) }
     }
 
     public var workspaceID: String?
     public var workflowID: String?
     public var stepID: String?
     public var agentProfileID: String?
+    /// The repository this work belongs to. `nil` means the workspace's own, which is
+    /// what the server assumes and what most tasks want.
+    public var repositoryID: String?
 
     public private(set) var phase: Phase = .editing
     public private(set) var workspaces: [KandevWorkspace] = []
     public private(set) var agentProfiles: [KandevAgentProfile] = []
+    public private(set) var repositories: [KandevRepository] = []
     public private(set) var isLoadingOptions = false
     /// The task the server created, once it has.
     public private(set) var createdTask: KandevTask?
     /// The chat the server started, once it has.
     public private(set) var startedChat: KandevChat?
 
-    /// Whether the title is still following the brief.
-    private var titleIsDerived = true
-    /// Guards the derivation above from looking like someone typing.
-    private var isDerivingTitle = false
 
     private let taskSource: any KandevTaskSource
     private let creator: any KandevTaskCreating
@@ -137,6 +132,7 @@ public final class NewTaskStore {
 
             try await catalogue.load(workspaceID: workspace.id)
             if workflowID == nil { workflowID = preferredWorkflow()?.id }
+            repositories = (try? await taskSource.repositories(workspaceID: workspace.id)) ?? []
             if let profileSource {
                 agentProfiles = (try? await profileSource.agentProfiles()) ?? []
                 // Chosen rather than asked about: a task almost always wants the
@@ -184,7 +180,8 @@ public final class NewTaskStore {
             stepID: stepID,
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             brief: brief.trimmingCharacters(in: .whitespacesAndNewlines),
-            agentProfileID: agentProfileID
+            agentProfileID: agentProfileID,
+            repositoryIDs: repositoryID.map { [$0] } ?? []
         )
         do {
             let task = try await creator.createTask(draft)
@@ -247,13 +244,13 @@ public final class NewTaskStore {
         }
     }
 
-    /// A task's title, taken from the first thing the person wrote.
+    /// A task's name: the first few words of what needs doing.
     ///
     /// The first non-empty line, with any markdown marker removed — people paste
-    /// headings and bulleted text into a brief, and "## Fix the flaky test" is a
-    /// worse title than "Fix the flaky test". A long line is cut at a word boundary
-    /// rather than mid-word.
-    nonisolated static func derivedTitle(from brief: String, limit: Int = 60) -> String {
+    /// headings and bulleted text into a brief, and "## Fix the flaky test" is a worse
+    /// title than "Fix the flaky test" — and then cut to a handful of words, because a
+    /// title is a name and not a sentence.
+    nonisolated static func derivedTitle(from brief: String, words: Int = 6) -> String {
         let firstLine = brief
             .split(separator: "\n", omittingEmptySubsequences: true)
             .first
@@ -263,9 +260,8 @@ public final class NewTaskStore {
                 || character == ">" || character == " " || character == "\t"
         }
         let trimmed = unmarked.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count > limit else { return trimmed }
-        let head = trimmed.prefix(limit)
-        guard let lastSpace = head.lastIndex(of: " ") else { return head + "…" }
-        return head[..<lastSpace] + "…"
+        let parts = trimmed.split(separator: " ")
+        guard parts.count > words else { return trimmed }
+        return parts.prefix(words).joined(separator: " ") + "…"
     }
 }

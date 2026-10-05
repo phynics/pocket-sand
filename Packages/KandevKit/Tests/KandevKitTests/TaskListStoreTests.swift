@@ -48,6 +48,16 @@ actor FakeTaskSource: KandevTaskSource {
         return stepsByWorkflow[workflowID] ?? []
     }
 
+    var repositoriesResult: Result<[KandevRepository], any Error> = .success([])
+
+    func setRepositories(_ repositories: [KandevRepository]) {
+        repositoriesResult = .success(repositories)
+    }
+
+    func repositories(workspaceID: String) async throws -> [KandevRepository] {
+        try repositoriesResult.get()
+    }
+
     /// Set to make the next `tasks` call fail, to exercise the store's error path.
     var tasksFailure: (any Error)?
 
@@ -598,5 +608,111 @@ struct SubtaskArrangementTests {
     func orderIsPreserved() {
         let arranged = TaskListStore.nested([row("a"), row("b"), row("c")])
         #expect(arranged.map(\.id) == ["a", "b", "c"])
+    }
+}
+
+@MainActor
+@Suite("Task list, grouped")
+struct TaskListGroupingTests {
+    private func store() async -> (TaskListStore, FakeTaskSource) {
+        let source = FakeTaskSource()
+        await source.setWorkspaces([KandevWorkspace(id: "w1", name: "Default", scopes: [])])
+        await source.setRepositories([
+            KandevRepository(id: "r1", name: "pocket-sand", sourceType: "local"),
+            KandevRepository(id: "r2", name: "kandev", sourceType: "github"),
+        ])
+        // The workspace is resolved from the server, not passed in.
+        let store = TaskListStore(source: source)
+        return (store, source)
+    }
+
+    private func task(
+        _ id: String,
+        _ title: String,
+        repository: String? = nil,
+        parent: String? = nil,
+        ephemeral: Bool = false
+    ) -> KandevTask {
+        KandevTask(
+            id: id,
+            title: title,
+            parentID: parent,
+            isEphemeral: ephemeral,
+            repositories: repository.map { [KandevTaskRepository(id: "link-\(id)", repositoryID: $0)] }
+        )
+    }
+
+    @Test("chats first, then a section per repository, in the order they appear")
+    func groupsByRepository() async {
+        let (store, source) = await store()
+        await source.setTasks([
+            task("t1", "Fix the parser", repository: "r2"),
+            task("t2", "Ask about retries", ephemeral: true),
+            task("t3", "Nested work", repository: "r1"),
+            task("t4", "Tidy the docs", repository: "r1"),
+            task("t5", "Fix the lexer", repository: "r2"),
+        ])
+
+        await store.refresh()
+
+        #expect(store.sections.map(\.id) == ["chats", "r2", "r1"])
+        #expect(store.sections.map(\.title) == ["Chats", "kandev", "pocket-sand"])
+        #expect(store.sections[0].isChats)
+        #expect(store.sections[1].rows.map(\.id) == ["t1", "t5"], "the server's order, not ours")
+        #expect(store.sections[2].rows.map(\.id) == ["t3", "t4"])
+    }
+
+    @Test("a list with nothing to group by is a list, not a section with a heading")
+    func ungroupedStaysFlat() async {
+        let (store, source) = await store()
+        await source.setTasks([task("t1", "One"), task("t2", "Two")])
+
+        await store.refresh()
+
+        #expect(store.sections.count == 1)
+        #expect(store.sections[0].title == nil, "a heading over the only section says nothing")
+        #expect(store.sections[0].rows.map(\.id) == ["t1", "t2"])
+    }
+
+    @Test("tasks with no repository are kept, and named when something else is there")
+    func unassignedTasksAreKept() async {
+        let (store, source) = await store()
+        await source.setTasks([
+            task("t1", "Belongs to one", repository: "r1"),
+            task("t2", "Belongs to none"),
+        ])
+
+        await store.refresh()
+
+        #expect(store.sections.map(\.id) == ["r1", "none"])
+        #expect(store.sections.last?.title == "No project")
+        #expect(store.sections.last?.rows.map(\.id) == ["t2"])
+    }
+
+    @Test("a subtask stays under its parent, inside its own section")
+    func subtasksStayUnderParents() async {
+        let (store, source) = await store()
+        await source.setTasks([
+            task("t1", "Parent", repository: "r1"),
+            task("t2", "Child", repository: "r1", parent: "t1"),
+            task("t3", "Other project", repository: "r2"),
+        ])
+
+        await store.refresh()
+
+        let pocket = store.sections.first { $0.id == "r1" }
+        #expect(pocket?.rows.map(\.id) == ["t1", "t2"])
+        #expect(pocket?.rows.map(\.depth) == [0, 1])
+    }
+
+    @Test("a repository with no name is headed by where it is")
+    func headingsFallBack() async {
+        let (store, source) = await store()
+        await source.setRepositories([KandevRepository(id: "r1", sourceType: "local", localPath: "/dev/x")])
+        await source.setTasks([task("t1", "One", repository: "r1")])
+
+        await store.refresh()
+
+        #expect(store.sections.first?.title == "/dev/x")
     }
 }

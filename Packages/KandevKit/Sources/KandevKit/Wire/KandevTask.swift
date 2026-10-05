@@ -22,6 +22,14 @@ public struct KandevTask: Sendable, Codable, Equatable, Identifiable {
     public var externalID: String?
     public var priority: String?
     public var origin: String?
+    /// Whether this task is a conversation rather than work: a quick chat or a
+    /// configuration chat.
+    ///
+    /// The server sends these in the task list, and the first-party client filters
+    /// them out of its sidebar — which is how this field was found. This client shows
+    /// them instead, in a section of their own, because a chat is a task and the way
+    /// to file one later is to have it in front of you.
+    public var isEphemeral: Bool?
     public var autopilot: Bool?
     public var position: Int?
     public var sessionCount: Int?
@@ -50,6 +58,7 @@ public struct KandevTask: Sendable, Codable, Equatable, Identifiable {
 
     public enum CodingKeys: String, CodingKey {
         case id, title, description, state, priority, origin, autopilot, position, labels
+        case isEphemeral = "is_ephemeral"
         case repositories
         case workflowID = "workflow_id"
         case workflowStepID = "workflow_step_id"
@@ -85,6 +94,7 @@ public struct KandevTask: Sendable, Codable, Equatable, Identifiable {
         externalID: String? = nil,
         priority: String? = nil,
         origin: String? = nil,
+        isEphemeral: Bool? = nil,
         autopilot: Bool? = nil,
         position: Int? = nil,
         sessionCount: Int? = nil,
@@ -114,6 +124,7 @@ public struct KandevTask: Sendable, Codable, Equatable, Identifiable {
         self.externalID = externalID
         self.priority = priority
         self.origin = origin
+        self.isEphemeral = isEphemeral
         self.autopilot = autopilot
         self.position = position
         self.sessionCount = sessionCount

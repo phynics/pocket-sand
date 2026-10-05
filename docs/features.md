@@ -47,6 +47,8 @@ this app does not · **·** out of scope on purpose.
 | Search tasks server-side | ✅ | ✅ | ◐ | The route takes `query` and `TaskListStore` already passes it; no field drives it. |
 | Sort (`updated_desc`, `created_*`, `title_*`) | ✅ | ✅ | ◐ | Hardcoded to `updated_desc`, which is the closest thing to last-activity. |
 | Filter by workflow or repository | ✅ | ✅ | — | |
+| **Group by project** | n/a | ✅ | ✅ | Client-side, by the task's first attached repository, with the workspace's repository names read for the headings. Subtasks stay under their parents inside their section. |
+| Attach a repository to a task | ✅ | ✅ | ✅ | One repository, at creation, from the workspace's list. The create route takes several; the screen offers one, because a phone is not where anyone decides a task belongs to three. |
 | Fetch one task | ✅ | ✅ | ✅ | `task.get` carries the session state, activity and step, so a row needs no second call. |
 | Create a task | ✅ | ✅ | ✅ | Title, brief, workflow, step, agent. The brief becomes the session's first prompt verbatim. |
 | Set the agent a task runs with | ✅ | ✅ | ✅ | Chosen at creation, and preselected to the one that is set up. A profile the runtime cannot vouch for is offered with the caveat said out loud rather than hidden. |
@@ -97,7 +99,8 @@ transcript it already has.
 
 | Capability | Server | PWA | Here | Note |
 | --- | --- | --- | --- | --- |
-| Start a quick chat | ✅ | ✅ | ✅ | `POST /workspaces/{id}/quick-chat`. Offered as the second door on the create screen, and named after the sentence rather than "agent - Chat 3". |
+| Start a quick chat | ✅ | ✅ | ✅ | `POST /workspaces/{id}/quick-chat`. Offered as a door on the create screen, and named after the sentence rather than "agent - Chat 3". |
+| Find a chat again | ✅ | ✅ | ✅ | In the task list, in a **Chats** section. The server marks them `is_ephemeral`, which is how the first-party client knows to hide them — this client shows them, because a chat is where a task that matters often starts. |
 | Start a configuration chat | ✅ | ✅ | ✅ | `POST /workspaces/{id}/config-chat`. Offered where the need arises: the create screen, when there is no agent to start anything with. |
 | List existing chats | ✅ | ✅ | — | `GET /workspaces/{id}/quick-chats` is written down and verified; nothing calls it yet, and a chat that is not in the task list has to be found somewhere. |
 | A chat's own tab, ordering, superseding | ✅ | ✅ | — | The first-party client keeps chats as tabs per workspace and deletes the task behind a superseded one. This client opens a chat as a task, because that is what it is. |

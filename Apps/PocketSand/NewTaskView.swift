@@ -3,10 +3,10 @@ import SwiftUI
 
 /// A task to open, and the words to carry into it.
 ///
-/// The words are empty for a filed task: the server already has the brief, and
-/// sends it to the agent as the first message when a session starts. A chat has no
-/// brief — it is a conversation — so its sentence travels with it into the
-/// composer, exactly as the first-party client pre-fills a chat's input.
+/// The words are empty for a filed task: the server already has the brief, and sends
+/// it to the agent as the first message when a session starts. A chat has no brief —
+/// it is a conversation — so its sentence travels with it into the composer, exactly
+/// as the first-party client pre-fills a chat's input.
 struct OpenedTask: Equatable {
     var taskID: String
     var sentence: String
@@ -14,48 +14,103 @@ struct OpenedTask: Equatable {
 
 /// Starting something: a task, a chat about the work, or a chat about the setup.
 ///
-/// The sentence comes first because the server makes it the agent's first message —
-/// creating a task and starting a conversation are the same act, and a form that
-/// asks for a title before it asks what you want done has the order backwards.
+/// **One input.** The server turns the sentence into the agent's first message, so
+/// the sentence is the only thing anyone has to write — and the task's name is taken
+/// from its first few words rather than asked for. A screen with one field is a screen
+/// where nobody has to work out which field is which, which is what an earlier version
+/// of this screen got wrong: two serif placeholders and no labels, and no way to tell
+/// the title from the prompt.
 ///
-/// What is left is not a form. It is two statements about what will happen, each
-/// one tap from being changed: where the task is filed, and which agent takes it.
-/// Both show an answer rather than asking a question, and both were chosen before
-/// anyone arrived — the workspace's first workflow, the agent that is set up.
+/// **The doors are visible.** A chat is not a hidden gesture and the setup chat is not
+/// something you have to be stuck to find, so all three are named across the top and
+/// the rest of the screen follows the one that is chosen. An earlier version put them
+/// at the bottom, where the keyboard covered them.
 ///
-/// The doors are the point of the screen. A chat is not a different object on the
-/// server — starting one creates a task and a session — so "Just ask instead"
-/// starts one and opens the same screen a task opens. When nothing is set up, the
-/// third door is the way out rather than a dead end.
+/// A chat is not a different object on the server — starting one creates a task and a
+/// session — so all three doors end in the same place: the transcript this app already
+/// has, carrying the sentence with it.
 struct NewTaskView: View {
     let store: NewTaskStore
     let onOpened: (OpenedTask) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @State private var mode: Mode = .task
+
+    /// What this screen can start.
+    enum Mode: String, CaseIterable, Identifiable {
+        case task
+        case chat
+        case setup
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .task: "Task"
+            case .chat: "Chat"
+            case .setup: "Setup"
+            }
+        }
+
+        /// The question the input answers, which is the input's label. A placeholder
+        /// disappears the moment someone types; a label does not, and this screen has
+        /// to stay legible after the first keystroke.
+        var question: String {
+            switch self {
+            case .task: "What needs doing?"
+            case .chat: "What do you want to ask?"
+            case .setup: "What should change?"
+            }
+        }
+
+        /// An example, because "what needs doing" is a question and a concrete sentence
+        /// answers a question better than an instruction does.
+        var example: String {
+            switch self {
+            case .task: "Fix the flaky test in the auth suite"
+            case .chat: "How does the retry policy work?"
+            case .setup: "Add a review step to the Development workflow"
+            }
+        }
+
+        var action: String {
+            switch self {
+            case .task: "Create"
+            case .chat: "Start chat"
+            case .setup: "Start setup chat"
+            }
+        }
+
+        /// What the sentence will be used for, said once and only while the field is
+        /// empty.
+        var footnote: String {
+            switch self {
+            case .task: "The agent receives this as its first message, word for word."
+            case .chat: "Sent as the chat's first message. Nothing is filed: it is a conversation."
+            case .setup: "The setup chat changes Kandev's own settings, not a task's."
+            }
+        }
+    }
 
     var body: some View {
         @Bindable var store = store
 
         NavigationStack {
             Form {
+                modeSection
                 sentenceSection
-                if store.needsAgentProfile {
-                    setupSection
-                } else {
-                    destinationSection
-                }
+                destinationSection
                 if case .failed(let message) = store.phase {
                     Section { FailureNote(message: message) }
                 }
-                askSection
             }
             .paperBackground()
             .scrollContentBackground(.hidden)
             // A plain list and no row background: a Form's inset cards are filled
-            // containers, and this app does not use them. The sentence is written
-            // on the paper, not in a box on it.
+            // containers, and this app does not use them. The sentence is written on
+            // the paper, not in a box on it.
             .listStyle(.plain)
-            .navigationTitle("New task")
+            .navigationTitle(mode == .task ? "New task" : "Start a chat")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
@@ -71,83 +126,112 @@ struct NewTaskView: View {
                         .foregroundStyle(Theme.muted)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(action: create) {
+                    Button(action: start) {
                         if store.phase == .creating {
                             ProgressView().controlSize(.small)
                         } else {
-                            Text("Create")
+                            Text(mode.action)
                                 .font(Theme.Face.chrome(.callout, weight: .semibold))
-                                .foregroundStyle(store.canFile ? Theme.ink : Theme.muted)
+                                .foregroundStyle(canStart ? Theme.ink : Theme.muted)
                         }
                     }
-                    .disabled(!store.canFile)
+                    .disabled(!canStart)
                 }
             }
-            // Deliberately not focusing the sentence. With the keyboard up, the
-            // second door and the agent's caveat fall below the fold — and the whole
-            // argument of this screen is what it shows at once: what you are asking
-            // for, where it goes, who takes it, and the other way to start. The field
-            // is the largest thing on the screen and does not need to be pointed at.
+            // Deliberately not focusing the sentence. With the keyboard up the choices
+            // below it fall under the fold, and the whole argument of this screen is
+            // what it shows at once: what you are asking for, where it goes, who takes
+            // it, and the other ways to start.
             .task { await store.loadOptions() }
         }
     }
 
-    // MARK: - What needs doing
+    private var canStart: Bool {
+        switch mode {
+        case .task: store.canFile
+        case .chat, .setup: store.canAsk
+        }
+    }
 
-    /// The sentence, and the name the server needs underneath it.
+    // MARK: - The doors
+
+    /// All three, named, with the chosen one in ink and a rule under it.
     ///
-    /// The title follows the sentence until someone edits it, so the common case is
-    /// one thing written rather than two. It is not hidden, because a title is what
-    /// the list shows and there is no way to rename a task from here yet.
+    /// A rule rather than a filled pill: this app has no accent colour and no filled
+    /// containers, so the way to say "this one" is weight and a line — the same
+    /// vocabulary the spine uses on a task row.
+    private var modeSection: some View {
+        Section {
+            HStack(spacing: Theme.Space.loose) {
+                ForEach(Mode.allCases) { candidate in
+                    Button {
+                        mode = candidate
+                    } label: {
+                        VStack(spacing: Theme.Space.hair) {
+                            Text(candidate.title)
+                                .font(Theme.Face.chrome(.callout, weight: mode == candidate ? .semibold : .regular))
+                                .foregroundStyle(mode == candidate ? Theme.ink : Theme.muted)
+                            Rule().opacity(mode == candidate ? 1 : 0)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(mode == candidate ? [.isSelected] : [])
+                }
+                Spacer(minLength: 0)
+            }
+            .listRowBackground(Color.clear)
+        }
+    }
+
+    // MARK: - The one input
+
     private var sentenceSection: some View {
         @Bindable var store = store
 
         return Section {
-            TextField("What needs doing?", text: $store.brief, axis: .vertical)
-                .font(Theme.Face.prose(.title3))
-                .foregroundStyle(Theme.ink)
-                .lineSpacing(Theme.proseLineSpacing)
-                .lineLimit(1...10)
-                .listRowBackground(Color.clear)
-            TextField("Title", text: $store.title)
-                .font(Theme.Face.prose(.body))
-                .foregroundStyle(Theme.ink)
-                .listRowBackground(Color.clear)
+            VStack(alignment: .leading, spacing: Theme.Space.snug) {
+                Text(mode.question)
+                    .font(Theme.Face.chrome(.footnote))
+                    .foregroundStyle(Theme.muted)
+                TextField(mode.example, text: $store.brief, axis: .vertical)
+                    .font(Theme.Face.prose(.title3))
+                    .foregroundStyle(Theme.ink)
+                    .lineSpacing(Theme.proseLineSpacing)
+                    .lineLimit(1...8)
+                    .textFieldStyle(.plain)
+                    .frame(minHeight: 84, alignment: .topLeading)
+                    .padding(.horizontal, Theme.Space.base)
+                    .padding(.vertical, Theme.Space.snug + 2)
+                    .fieldArea()
+            }
+            .listRowBackground(Color.clear)
         } footer: {
-            // Said once, while the field is empty, and then out of the way: this is
-            // not a note about the work, it is the work.
             if store.brief.isEmpty {
-                Text("The agent receives this as its first message, word for word.")
+                Text(mode.footnote)
                     .font(Theme.Face.chrome(.footnote))
                     .foregroundStyle(Theme.muted)
             }
         }
     }
 
-    // MARK: - What will happen
+    // MARK: - Where it goes, and who takes it
 
-    /// The two statements: filed where, taken by whom.
-    ///
-    /// A menu rather than a picker per field, because filing is one decision —
-    /// a workflow and a step — and two rows of two pickers reads as four.
     private var destinationSection: some View {
-        @Bindable var store = store
-
-        return Section {
-            Menu {
-                filingMenu
-            } label: {
-                consequenceRow(
-                    "Filed in",
-                    value: filingValue,
-                    isChosen: store.workflowID != nil
-                )
+        Section {
+            if mode == .task {
+                Menu {
+                    filingMenu
+                } label: {
+                    consequenceRow(
+                        "Filed in",
+                        value: filingValue,
+                        isChosen: store.workflowID != nil
+                    )
+                }
+                .listRowBackground(Color.clear)
             }
-            .listRowBackground(Color.clear)
-            // Built like the row above rather than as a `Picker`, which renders its
-            // own value in the system's secondary grey. The two rows are one
-            // sentence about what will happen, so they have to read as one thing:
-            // muted label, ink answer.
+
             Menu {
                 ForEach(store.agentProfiles) { profile in
                     Button(profile.displayName) { store.agentProfileID = profile.id }
@@ -160,15 +244,49 @@ struct NewTaskView: View {
                 )
             }
             .listRowBackground(Color.clear)
+
+            repositoryRow
         } header: {
-            Text("What happens next")
+            Text(mode == .task ? "Where it goes" : "Who takes it")
                 .font(Theme.Face.chrome(.footnote))
                 .foregroundStyle(Theme.muted)
                 .textCase(nil)
         } footer: {
-            // Said where the choice is made, and only when it is true: an agent the
-            // runtime cannot vouch for is still offered, because withholding it
-            // tells someone they have nothing set up when they do.
+            destinationFooter
+        }
+    }
+
+    /// The repository this work belongs to.
+    ///
+    /// A workspace with none configured gets a statement rather than an empty menu:
+    /// a control that opens onto nothing is worse than no control, and the way to add
+    /// one is the setup chat, which is named where the need arises.
+    @ViewBuilder private var repositoryRow: some View {
+        if store.repositories.isEmpty {
+            consequenceRow("Repository", value: "None configured", isChosen: false, isPickable: false)
+                .listRowBackground(Color.clear)
+        } else {
+            Menu {
+                Button("The workspace's own") { store.repositoryID = nil }
+                ForEach(store.repositories) { repository in
+                    Button(repository.name.isEmpty ? repository.origin : repository.name) {
+                        store.repositoryID = repository.id
+                    }
+                }
+            } label: {
+                consequenceRow("Repository", value: repositoryValue, isChosen: store.repositoryID != nil)
+            }
+            .listRowBackground(Color.clear)
+        }
+    }
+
+    @ViewBuilder private var destinationFooter: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.snug) {
+            if store.repositories.isEmpty {
+                Text("No repositories in this workspace yet. **Setup** can add one — a GitHub repository, or a path on the machine running Kandev.")
+                    .font(Theme.Face.chrome(.footnote))
+                    .foregroundStyle(Theme.muted)
+            }
             if selectedProfile?.isUnconfirmed == true {
                 Text("The runtime does not confirm this agent's model, so starting it may fail.")
                     .font(Theme.Face.chrome(.footnote))
@@ -177,14 +295,10 @@ struct NewTaskView: View {
         }
     }
 
-    private var selectedProfile: KandevAgentProfile? {
-        store.agentProfiles.first { $0.id == store.agentProfileID }
-    }
-
     /// Every workflow, and its steps, in one menu.
     ///
-    /// Sections rather than a second level: a nested menu on a phone is a second
-    /// tap that hides the answer, and there are rarely many workflows.
+    /// Sections rather than a second level: a nested menu on a phone is a second tap
+    /// that hides the answer, and there are rarely many workflows.
     @ViewBuilder private var filingMenu: some View {
         ForEach(store.workflows) { workflow in
             Section(workflow.name) {
@@ -202,10 +316,15 @@ struct NewTaskView: View {
 
     /// A label, an answer, and the platform's own "this opens a choice" glyph.
     ///
-    /// The chevron is `up.chevron.down.chevron` and not `chevron.right`: this row
-    /// opens a menu where it stands, and the row-chevron is the vocabulary this app
-    /// deliberately dropped from its lists.
-    private func consequenceRow(_ label: String, value: String, isChosen: Bool) -> some View {
+    /// The glyph is in ink and not in the muted grey a hint would use: a row that
+    /// opens a menu has to look like one, which is what the first version of this
+    /// screen got wrong — a workflow nobody knew they could change.
+    private func consequenceRow(
+        _ label: String,
+        value: String,
+        isChosen: Bool,
+        isPickable: Bool = true
+    ) -> some View {
         HStack(spacing: Theme.Space.snug) {
             Text(label)
                 .font(Theme.Face.chrome(.callout))
@@ -215,11 +334,24 @@ struct NewTaskView: View {
                 .font(Theme.Face.chrome(.callout))
                 .foregroundStyle(isChosen ? Theme.ink : Theme.muted)
                 .lineLimit(1)
-            Image(systemName: "chevron.up.chevron.down")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Theme.muted)
+            if isPickable {
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.ink)
+            }
         }
         .contentShape(Rectangle())
+    }
+
+    private var selectedProfile: KandevAgentProfile? {
+        store.agentProfiles.first { $0.id == store.agentProfileID }
+    }
+
+    private var repositoryValue: String {
+        guard let id = store.repositoryID,
+              let repository = store.repositories.first(where: { $0.id == id })
+        else { return "The workspace's own" }
+        return repository.name.isEmpty ? repository.origin : repository.name
     }
 
     /// Where the task will land, in the words the list will use.
@@ -233,71 +365,19 @@ struct NewTaskView: View {
         }
     }
 
-    // MARK: - When nothing is set up
-
-    /// The third door: what to do when there is no agent to do anything.
-    ///
-    /// A disabled button and the words "no agent profiles" is a screen someone
-    /// cannot get out of. A chat that edits Kandev's own configuration is exactly
-    /// the thing that fixes this, so it is offered here rather than in a settings
-    /// screen nobody has found yet.
-    private var setupSection: some View {
-        Section {
-            Button {
-                startChat(.config)
-            } label: {
-                // An action, not a menu: there is one thing to do about it, and the
-                // chevron and value that a choice would carry said otherwise.
-                Text("Change the setup")
-                    .font(Theme.Face.chrome(.callout))
-                    .foregroundStyle(Theme.ink)
-            }
-            .listRowBackground(Color.clear)
-        } header: {
-            Text("No agent is set up")
-                .font(Theme.Face.chrome(.footnote))
-                .foregroundStyle(Theme.muted)
-                .textCase(nil)
-        } footer: {
-            Text("Nothing can start until there is one. The setup chat can make one — it changes Kandev's own settings, not this task's.")
-                .font(Theme.Face.chrome(.footnote))
-                .foregroundStyle(Theme.muted)
-        }
-    }
-
-    // MARK: - The other door
-
-    /// Asking instead of filing.
-    ///
-    /// Quieter than the toolbar's Create, because filing is what this app is for —
-    /// but not hidden, because needing an answer now is the commoner reason to open
-    /// a phone. It carries the sentence with it, so nothing written is thrown away.
-    private var askSection: some View {
-        Section {
-            Button {
-                startChat(.quick)
-            } label: {
-                Text("Just ask instead")
-                    .font(Theme.Face.chrome(.callout))
-                    .foregroundStyle(store.canAsk ? Theme.muted : Theme.muted.opacity(0.45))
-            }
-            .listRowBackground(Color.clear)
-            .disabled(!store.canAsk)
-        } footer: {
-            if !store.canAsk && !store.needsAgentProfile {
-                Text("A chat needs a sentence and an agent, and no workflow at all.")
-                    .font(Theme.Face.chrome(.footnote))
-                    .foregroundStyle(Theme.muted)
-            }
-        }
-    }
-
     // MARK: - Doing it
 
-    private func create() {
-        Task {
-            guard let task = await store.create() else { return }
-            onOpened(OpenedTask(taskID: task.id, sentence: ""))
+    private func start() {
+        switch mode {
+        case .task:
+            Task {
+                guard let task = await store.create() else { return }
+                onOpened(OpenedTask(taskID: task.id, sentence: ""))
+            }
+        case .chat:
+            startChat(.quick)
+        case .setup:
+            startChat(.config)
         }
     }
 

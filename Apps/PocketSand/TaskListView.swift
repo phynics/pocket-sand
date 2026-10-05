@@ -113,7 +113,7 @@ struct TaskListView: View {
                 } message: {
                     Text(removalMessage)
                 }
-                .sheet(isPresented: $isCreatingTask) {
+                .sheet(isPresented: $isCreatingTask, onDismiss: { newTask = nil }) {
                     if let newTask {
                         NewTaskView(store: newTask) { opened in
                             isCreatingTask = false
@@ -130,7 +130,13 @@ struct TaskListView: View {
     }
 
     /// Opens the create screen, with the workspace the list is already showing.
+    ///
+    /// Idempotent, because a second tap while the sheet is open used to rebuild the
+    /// store underneath it — which resets the form someone is in the middle of, and
+    /// shows up as the sheet "opening again". A tap on a button that has already done
+    /// its job should do nothing.
     private func openCreateSheet() {
+        guard !isCreatingTask else { return }
         newTask = NewTaskStore(
             taskSource: session.client,
             creator: session.client,
@@ -140,6 +146,62 @@ struct TaskListView: View {
             workspaceID: store.workspace?.id
         )
         isCreatingTask = true
+    }
+
+    /// The rows of one section.
+    ///
+    /// Extracted so the grouping above does not have to repeat it, and so the
+    /// prefetch below can still ask for the next page by *list* position rather than
+    /// by section position: the last row of the last section is the end of the list.
+    @ViewBuilder private func rows(_ section: [TaskRow]) -> some View {
+        ForEach(section) { row in
+            // A button rather than a NavigationLink: the link draws a chevron at
+            // the trailing edge, which is a second thing in the row competing with
+            // the title for the width the title needs.
+            Button {
+                path = [row.id]
+            } label: {
+                TaskRowView(row: row)
+            }
+            .buttonStyle(.plain)
+            .task {
+                // Prefetch by position rather than watching an index: a row
+                // asks for the next page when it is the last one drawn.
+                if row.id == store.rows.last?.id {
+                    await store.loadMore()
+                }
+            }
+            // Per row, not on the List: applied to the List it does nothing,
+            // and the spine then starts inset from the screen edge instead of
+            // forming the continuous colour column the design is built on.
+            .listRowInsets(EdgeInsets())
+            // Clear, so the paper's grain runs behind the rows rather than
+            // stopping at each one.
+            .listRowBackground(Color.clear)
+            .listRowSeparatorTint(Theme.rule)
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                if store.showingArchived {
+                    // No confirmation: putting something back is not
+                    // destructive, and asking would be ceremony.
+                    Button("Unarchive", systemImage: "arrow.up.bin") {
+                        Task {
+                            guard await removal.unarchive(taskID: row.id) else { return }
+                            withAnimation { store.removeRow(taskID: row.id) }
+                        }
+                    }
+                    .tint(.indigo)
+                } else {
+                    Button("Archive", systemImage: "archivebox") {
+                        removal.ask(.archive, taskID: row.id, title: row.title)
+                    }
+                    .tint(.indigo)
+
+                    Button("Delete", systemImage: "trash", role: .destructive) {
+                        removal.ask(.delete, taskID: row.id, title: row.title)
+                    }
+                }
+            }
+        }
     }
 
     private var title: String {
@@ -189,51 +251,18 @@ struct TaskListView: View {
                 }
             }
 
-            ForEach(store.rows) { row in
-                // A button rather than a NavigationLink: the link draws a chevron at
-                // the trailing edge, which is a second thing in the row competing with
-                // the title for the width the title needs.
-                Button {
-                    path = [row.id]
-                } label: {
-                    TaskRowView(row: row)
-                }
-                .buttonStyle(.plain)
-                .task {
-                    // Prefetch by position rather than watching an index: a row
-                    // asks for the next page when it is the last one drawn.
-                    if row.id == store.rows.last?.id {
-                        await store.loadMore()
-                    }
-                }
-                // Per row, not on the List: applied to the List it does nothing,
-                // and the spine then starts inset from the screen edge instead of
-                // forming the continuous colour column the design is built on.
-                .listRowInsets(EdgeInsets())
-                // Clear, so the paper's grain runs behind the rows rather than
-                // stopping at each one.
-                .listRowBackground(Color.clear)
-                .listRowSeparatorTint(Theme.rule)
-                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                    if store.showingArchived {
-                        // No confirmation: putting something back is not
-                        // destructive, and asking would be ceremony.
-                        Button("Unarchive", systemImage: "arrow.up.bin") {
-                            Task {
-                                guard await removal.unarchive(taskID: row.id) else { return }
-                                withAnimation { store.removeRow(taskID: row.id) }
-                            }
-                        }
-                        .tint(.indigo)
-                    } else {
-                        Button("Archive", systemImage: "archivebox") {
-                            removal.ask(.archive, taskID: row.id, title: row.title)
-                        }
-                        .tint(.indigo)
-
-                        Button("Delete", systemImage: "trash", role: .destructive) {
-                            removal.ask(.delete, taskID: row.id, title: row.title)
-                        }
+            // Grouped: conversations first, then a section per project. A workspace
+            // with one repository and no chats draws one untitled section, which is
+            // the flat list this screen has always been.
+            ForEach(store.sections) { section in
+                Section {
+                    rows(section.rows)
+                } header: {
+                    if let title = section.title {
+                        Text(title)
+                            .font(Theme.Face.chrome(.footnote))
+                            .foregroundStyle(Theme.muted)
+                            .textCase(nil)
                     }
                 }
             }

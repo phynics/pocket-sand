@@ -251,23 +251,35 @@ extension View {
     /// the bottom. A flat fill read as a hole cut out of the glass — sharp, with no
     /// light in it — and this is the same shape with the surface of it polished.
     func fieldWell() -> some View {
-        modifier(FieldWell())
+        modifier(FieldWell(shape: AnyShape(Capsule())))
+    }
+
+    /// The same recess, for writing more than one line.
+    ///
+    /// A capsule is the shape of a field that holds a phrase; a brief holds a
+    /// paragraph, and a capsule around a paragraph is a pill with a sentence in it.
+    /// The paint is shared, so the two read as the same kind of thing: a field is the
+    /// one place this app fills a container, because a field is a container for words.
+    func fieldArea() -> some View {
+        modifier(FieldWell(shape: AnyShape(RoundedRectangle(cornerRadius: 18, style: .continuous))))
     }
 }
 
 private struct FieldWell: ViewModifier {
+    let shape: AnyShape
+
     @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
         content.background {
-            Capsule()
+            shape
                 .fill(
                     colorScheme == .dark
                         ? Color.white.opacity(0.06)
                         : Theme.ink.opacity(0.045)
                 )
                 .overlay {
-                    Capsule()
+                    shape
                         .stroke(
                             LinearGradient(
                                 colors: [
