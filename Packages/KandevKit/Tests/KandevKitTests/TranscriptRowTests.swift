@@ -237,18 +237,19 @@ struct TranscriptCondensingTests {
         (0..<count).map { row("s\(offset + $0)", .tool, "step \(offset + $0)") }
     }
 
-    /// A run long enough to summarise becomes one control, in the place the run was.
-    @Test("summarises a long run where it stands")
-    func summarisesInPlace() {
+    /// A run long enough to summarise becomes one control **under** the work it
+    /// stands for: it is a conclusion about those steps, and a conclusion goes last.
+    @Test("summarises a long run underneath it")
+    func summarisesUnderneath() {
         let items = turn(
             [row("p", .prompt)] + steps(8) + [row("r", .reply)]
         ).items(condensing: true)
 
         #expect(items.count == 3)
         #expect(items[0].id == "p")
-        #expect(items[1].isStepsSummary)
+        #expect(items[1].isStepsSummary, "the steps it stands for come first")
         #expect(items[1].stepsSummaryLabel == "Ran 8 commands")
-        #expect(items[2].id == "r")
+        #expect(items[2].id == "r", "and prose the agent wrote mid-turn keeps its place")
     }
 
     /// The reason the work is folded rather than reordered: an agent that speaks between
@@ -263,7 +264,10 @@ struct TranscriptCondensingTests {
                 + [row("99", .reply)]
         ).items(condensing: true)
 
-        #expect(items.map(\.id) == ["1", "steps:s10", "9", "99"], "the words stay where they were said")
+        // The summary sits under the work it counts, which is under the *last* of it:
+        // prose an agent wrote mid-turn keeps its place above, and an answer written
+        // after the final step stays below.
+        #expect(items.map(\.id) == ["1", "9", "steps:s10", "99"], "the words keep their places")
     }
 
     /// One turn, one control. Two of them meant two sheets onto the same exchange and a
@@ -278,6 +282,22 @@ struct TranscriptCondensingTests {
         #expect(summaries.count == 1)
         #expect(summaries.first?.stepsSummaryRows?.count == 14, "all of the turn's work")
         #expect(summaries.first?.stepsSummaryDuration == 187)
+    }
+
+    /// The line says how long it has been going, and whether it is still going.
+    @Test("a running turn is timed from its start, and a finished one by the server")
+    func timesARunningTurnFromItsStart() {
+        let started = Date(timeIntervalSince1970: 1_000_000)
+        let rows = [row("1", .prompt)] + steps(8)
+
+        let running = TranscriptTurn(id: "t1", rows: rows, startedAt: started)
+            .items(condensing: false, generating: true, now: started.addingTimeInterval(215))
+        let summary = running.first { $0.isStepsSummary }
+        #expect(summary?.stepsSummaryDuration == 215, "the server has not dated an end that has not come")
+
+        let finished = TranscriptTurn(id: "t1", rows: rows, startedAt: started, duration: 187)
+            .items(condensing: true, generating: false)
+        #expect(finished.first { $0.isStepsSummary }?.stepsSummaryDuration == 187, "the server's clock counts the whole of it")
     }
 
     @Test("a short run is left as it is")
@@ -312,10 +332,10 @@ struct RunSummaryTests {
     func liveTurnShowsItsTail() {
         let items = turn(machineRows(20)).items(condensing: false)
 
-        #expect(items.count == 6, "the summary and five steps")
-        #expect(items[0].stepsSummaryLabel == "Ran 20 commands")
-        #expect(items[1].id == "m15", "the tail starts at the sixteenth")
-        #expect(items.last?.id == "m19")
+        #expect(items.count == 6, "five steps and the line under them")
+        #expect(items[0].id == "m15", "the tail starts at the sixteenth")
+        #expect(items[4].id == "m19")
+        #expect(items.last?.stepsSummaryLabel == "Ran 20 commands", "the line goes underneath the work")
     }
 
     /// A finished turn shows the summary alone. The work is done, and the gist is
@@ -356,9 +376,10 @@ struct RunSummaryTests {
     func theSummaryCarriesItsSteps() {
         let items = turn(machineRows(20)).items(condensing: false)
 
-        let rows = items[0].stepsSummaryRows
+        let summary = items.last
+        let rows = summary?.stepsSummaryRows
         #expect(rows?.count == 20)
-        #expect(items[0].stepsSummaryLabel == "Ran 20 commands")
+        #expect(summary?.stepsSummaryLabel == "Ran 20 commands")
         #expect(rows?.first?.id == "m0", "all of them, not only the five on screen")
     }
 
@@ -367,14 +388,14 @@ struct RunSummaryTests {
     @Test("the summary counts every step of the run, not the ones on screen")
     func theSummaryCountsTheWholeRun() {
         let items = turn(machineRows(83)).items(condensing: false)
-        #expect(items[0].stepsSummaryLabel == "Ran 83 commands")
+        #expect(items.last?.stepsSummaryLabel == "Ran 83 commands")
     }
 
     @Test("one step is one step, not one steps")
     func singularLabel() {
         let items = turn([TranscriptRow(id: "p", kind: .prompt, text: "ask")] + machineRows(6))
             .items(condensing: false)
-        #expect(items[1].stepsSummaryLabel == "Ran 6 commands")
+        #expect(items.last?.stepsSummaryLabel == "Ran 6 commands")
     }
 
     /// The step being written is drawn as a paragraph, in addition to the five
@@ -383,13 +404,14 @@ struct RunSummaryTests {
     func generatingTurnEndsWithItsCurrentStep() {
         let items = turn(machineRows(20)).items(condensing: false, generating: true)
 
-        #expect(items.count == 7, "the summary, five one-liners, and the step being written")
-        #expect(items[1].id == "m14", "the tail keeps all five of its places")
-        guard case .liveStep(let row) = items[6] else {
+        #expect(items.count == 7, "five one-liners, the step being written, and the line under them")
+        #expect(items[0].id == "m14", "the tail keeps all five of its places")
+        guard case .liveStep(let row) = items[5] else {
             Issue.record("the newest step should be the live one")
             return
         }
         #expect(row.id == "m19")
+        #expect(items[6].isStepsSummary, "and the summary still ends the turn")
     }
 
     /// A step is only "current" while it is the newest thing: once the agent has gone

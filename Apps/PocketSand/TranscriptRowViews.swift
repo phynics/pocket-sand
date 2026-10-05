@@ -87,51 +87,73 @@ struct TranscriptTurnView: View {
     let onShowSteps: (TurnSheetContent) -> Void
 
     var body: some View {
+        // A running turn is timed as it goes, so its clock has to tick. Only a working
+        // turn gets a timer: a finished one has nothing left to count, and one timer per
+        // turn would be one per row of the transcript.
+        if isWorking {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                content(now: context.date)
+            }
+        } else {
+            content(now: Date())
+        }
+    }
+
+    @ViewBuilder private func content(now: Date) -> some View {
+        let items = turn.items(condensing: isCondensed, generating: isWorking, now: now)
+
         VStack(alignment: .leading, spacing: Theme.Space.base) {
-            ForEach(turn.items(condensing: isCondensed, generating: isWorking)) { item in
-                switch item {
-                case .row(let row) where row.kind != .status:
-                    // Every row is a way into the exchange. A line grows into the sheet
-                    // rather than into the paragraph it was standing in for: tapping the
-                    // work to read the work is the whole gesture, and it cannot undo the
-                    // fold the way an in-place expansion did.
-                    Button {
-                        onShowSteps(exchange(id: item.id, steps: turn.machineRows, focus: item.id))
-                    } label: {
+            ForEach(items) { item in
+                Group {
+                    switch item {
+                    case .row(let row) where row.kind != .status:
+                        // Every row is a way into the exchange. A line grows into the sheet
+                        // rather than into the paragraph it was standing in for: tapping the
+                        // work to read the work is the whole gesture, and it cannot undo the
+                        // fold the way an in-place expansion did.
+                        Button {
+                            onShowSteps(exchange(id: item.id, steps: turn.machineRows, focus: item.id))
+                        } label: {
+                            TranscriptRowView(row: row, isExpanded: false)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Opens this exchange")
+
+                    case .row(let row):
+                        // A lifecycle notice is a fact about the session, not a thing to open.
                         TranscriptRowView(row: row, isExpanded: false)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Opens this exchange")
 
-                case .row(let row):
-                    // A lifecycle notice is a fact about the session, not a thing to open.
-                    TranscriptRowView(row: row, isExpanded: false)
+                    case .liveStep(let row):
+                        Button {
+                            onShowSteps(exchange(id: item.id, steps: turn.machineRows, focus: item.id))
+                        } label: {
+                            LiveStepView(row: row)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Opens this exchange")
 
-                case .liveStep(let row):
-                    Button {
-                        onShowSteps(exchange(id: item.id, steps: turn.machineRows, focus: item.id))
-                    } label: {
-                        LiveStepView(row: row)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Opens this exchange")
+                    case .stepsSummary:
+                        StepsSummaryView(item: item, isRunning: isWorking) {
+                            guard let rows = item.stepsSummaryRows else { return }
+                            onShowSteps(exchange(id: item.id, steps: rows, focus: nil))
+                        }
 
-                case .stepsSummary:
-                    StepsSummaryView(item: item) {
-                        guard let rows = item.stepsSummaryRows else { return }
-                        onShowSteps(exchange(id: item.id, steps: rows, focus: nil))
+                    case .repeated(let id, let count, let row):
+                        Button {
+                            onShowSteps(exchange(id: id, steps: turn.machineRows, focus: id))
+                        } label: {
+                            RepeatedStepsView(count: count, row: row)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Opens this exchange")
+                        .id(id)
                     }
-
-                case .repeated(let id, let count, let row):
-                    Button {
-                        onShowSteps(exchange(id: id, steps: turn.machineRows, focus: id))
-                    } label: {
-                        RepeatedStepsView(count: count, row: row)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Opens this exchange")
-                    .id(id)
                 }
+                // A step leaving the tail slides down and out, and the one arriving
+                // slides up into place: that movement is the scroll, and it is what
+                // says the work is progressing rather than redrawing. The summary's
+                // own id never changes, so it stays put while its numbers roll.
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             // The duration sits on the rule at the end of a turn that is on show. A
@@ -148,6 +170,10 @@ struct TranscriptTurnView: View {
                 .padding(.top, Theme.Space.hair)
             }
         }
+        // A step finishing pushes the tail up and lands in the summary line below it.
+        // Animating the *set* of rows is what makes that read as one movement rather
+        // than as two unrelated redraws.
+        .animation(Motion.fold(reduceMotion: reduceMotion), value: items.map(\.id))
     }
 
     /// One exchange, as the sheet wants it: what was said before, what was asked, the
@@ -239,7 +265,13 @@ struct LiveStepView: View {
 /// length of the conversation.
 struct StepsSummaryView: View {
     let item: TranscriptItem
+    /// Whether the turn is still running, which decides the tense: a line that says
+    /// "ran for" about work still in progress is a lie, and one that says "running
+    /// for" about finished work is a worse one.
+    var isRunning = false
     let open: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: open) {
@@ -256,12 +288,11 @@ struct StepsSummaryView: View {
         .accessibilityHint("Opens the full conversation around this work")
     }
 
-    /// How long it took, then what it was.
+    /// How long it has been going, then what it has done.
     ///
-    /// The time leads because it is the one fact the rows underneath cannot tell you, and
-    /// because "Worked for 3m 7s" is how a person describes a stretch of work. The summary
-    /// follows in the muted voice: it is detail about the headline, and the sheet has the
-    /// whole of it.
+    /// The time leads because it is the one fact the rows underneath cannot tell you.
+    /// Spelled out rather than as "3m 35s", because this is a sentence about work in
+    /// progress and a chip is not: "Running for 3 minutes and 35 seconds".
     ///
     /// One string with two runs rather than two labels, so a long summary wraps to a
     /// second line instead of being cut off mid-phrase. "Read 9 files and ran 49…" reads
@@ -271,20 +302,25 @@ struct StepsSummaryView: View {
             .font(Theme.Face.chrome(.footnote))
             .lineLimit(2)
             .multilineTextAlignment(.leading)
+            // The numbers roll rather than jump. This is the only thing on the screen
+            // that changes without anyone touching it, and a counter that ticks is how
+            // a line says "still working" without a spinner.
+            .contentTransition(.numericText())
+            .animation(Motion.fold(reduceMotion: reduceMotion), value: attributedLabel)
     }
 
     private var attributedLabel: AttributedString {
         var label = AttributedString()
 
         if let duration = item.stepsSummaryDuration {
-            var time = AttributedString("Worked for \(CompactDuration.label(seconds: duration))")
+            var time = AttributedString("\(timeLead(in: duration)) \(CompactDuration.spoken(seconds: duration))")
             time.font = Theme.Face.chrome(.footnote, weight: .medium)
             time.foregroundColor = Theme.ink
             label += time
         }
 
         if let summary = item.stepsSummaryLabel {
-            var words = AttributedString(item.stepsSummaryDuration == nil ? summary : "· \(summary)")
+            var words = AttributedString(item.stepsSummaryDuration == nil ? summary : "; \(summary)")
             words.foregroundColor = Theme.muted
             label += words
         }
@@ -292,10 +328,14 @@ struct StepsSummaryView: View {
         return label
     }
 
+    private func timeLead(in _: TimeInterval) -> String {
+        isRunning ? "Running for" : "Ran for"
+    }
+
     private var spokenLabel: String {
         var parts: [String] = []
         if let duration = item.stepsSummaryDuration {
-            parts.append("Worked for \(CompactDuration.label(seconds: duration))")
+            parts.append("\(timeLead(in: duration)) \(CompactDuration.spoken(seconds: duration))")
         }
         if let summary = item.stepsSummaryLabel { parts.append(summary) }
         return parts.joined(separator: ", ")

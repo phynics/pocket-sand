@@ -153,6 +153,32 @@ Folding is by **run**, not by reordering. A turn is usually question, work, answ
 but an agent that speaks between tool calls would have its words moved past them by
 a condensing that sorted rows into kinds. The run replaces rows where they stand.
 
+### The line under the work
+
+A turn's folded summary used to sit *above* the steps it counted, and read "Worked for
+3m 7s · Read 9 files and ran 53 commands". It is now underneath them, and says
+**"Running for 3 minutes and 35 seconds; Read 9 files and ran 53 commands"**:
+
+- **Underneath, because it is a conclusion.** Above the work it was a claim about
+  steps that had not happened yet. It sits under the last step it counts — which in a
+  live turn is the bottom of the screen, and the reason the change was asked for.
+- **Spelled out, because it is a sentence.** "3m 35s" is a label; "3 minutes and 35
+  seconds" is how someone says it out loud. Two lines are allowed, so the whole thing
+  wraps rather than being cut mid-phrase.
+- **"Running for", not "Ran for", while it runs.** The tense is the state: a line that
+  says "ran for" about work in progress is a lie, and the same line becomes "Ran for"
+  when the turn ends. Nothing else has to say whether the agent is still going.
+- **A running turn is timed from its own start**, because the server has not dated an
+  end that has not come. A finished one is timed by the server, which counted the whole
+  of it. The clock ticks once a second — only a working turn gets a timer, since a
+  finished one has nothing to count.
+
+**The movement says progress.** As a step finishes it leaves the five-line tail and the
+summary takes the count, so the rows slide up and out (`.transition(.move(edge: .bottom))`,
+animated on the *set* of row ids) and the numbers in the line roll rather than jump
+(`.contentTransition(.numericText())`). That is the only thing on the screen that changes
+without anyone touching it, and it is why the line does not need a spinner.
+
 ## Motion
 
 One animation in the app: a working row's spine dims and brightens. It answers the

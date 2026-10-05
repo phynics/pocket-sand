@@ -172,7 +172,8 @@ public struct TranscriptTurn: Sendable, Identifiable, Equatable {
     public func items(
         condensing: Bool,
         recentLimit: Int = TranscriptTurn.recentMachineRowLimit,
-        generating: Bool = false
+        generating: Bool = false,
+        now: Date = Date()
     ) -> [TranscriptItem] {
         let machine = machineRows
         let live = generating && !condensing && rows.last?.isMachineOutput == true
@@ -190,7 +191,16 @@ public struct TranscriptTurn: Sendable, Identifiable, Equatable {
         let tailCount = recentLimit + (live ? 1 : 0)
         let lastMachineIndex = rows.lastIndex { $0.isMachineOutput }
         var items: [TranscriptItem] = []
-        var summaryPlaced = false
+        var tailPlaced = false
+
+        // A running turn is timed from when it started, because the server has not
+        // dated the end of something that has not ended. A finished one is timed by
+        // the server, which is the only clock that counted the whole of it.
+        let elapsed: TimeInterval? = if generating {
+            startedAt.map { now.timeIntervalSince($0) }
+        } else {
+            duration
+        }
 
         for (index, row) in rows.enumerated() {
             guard row.isMachineOutput else {
@@ -198,19 +208,28 @@ public struct TranscriptTurn: Sendable, Identifiable, Equatable {
                 continue
             }
 
-            if !summaryPlaced {
+            if !tailPlaced {
+                // The steps still on screen, where the work is happening — but only in
+                // a turn that is open. A folded turn is one line by definition, and the
+                // reason to fold it is that its steps have stopped mattering.
+                if !condensing {
+                    items.append(contentsOf: Array(machine.suffix(tailCount)).collapsedRepeats())
+                }
+                tailPlaced = true
+            }
+
+            if index == lastMachineIndex {
+                // And the line that says how long it has been and how much it has
+                // done, *underneath* the work. It is a conclusion about those steps,
+                // and a conclusion goes last — above them it was a claim about work
+                // that had not happened yet.
                 items.append(
                     .stepsSummary(
                         id: "steps:\(machine[0].id)",
                         rows: machine,
-                        duration: condensing ? duration : nil
+                        duration: elapsed
                     )
                 )
-                summaryPlaced = true
-            }
-
-            if index == lastMachineIndex, !condensing {
-                items.append(contentsOf: Array(machine.suffix(tailCount)).collapsedRepeats())
             }
         }
 

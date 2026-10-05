@@ -37,3 +37,34 @@ struct CompactDurationTests {
         }
     }
 }
+import Foundation
+import Testing
+
+@testable import KandevKit
+
+/// The sentence form of a duration, for the line that says what a turn is doing.
+@Suite("Duration in words")
+struct SpokenDurationTests {
+    @Test("seconds alone, spelled out and pluralised")
+    func seconds() {
+        #expect(CompactDuration.spoken(seconds: 0) == "0 seconds")
+        #expect(CompactDuration.spoken(seconds: 1) == "1 second")
+        #expect(CompactDuration.spoken(seconds: 45) == "45 seconds")
+        #expect(CompactDuration.spoken(seconds: 59.4) == "59 seconds", "rounded, not truncated")
+    }
+
+    @Test("minutes and seconds, joined the way a person says them")
+    func minutes() {
+        #expect(CompactDuration.spoken(seconds: 60) == "1 minute")
+        #expect(CompactDuration.spoken(seconds: 120) == "2 minutes")
+        #expect(CompactDuration.spoken(seconds: 215) == "3 minutes and 35 seconds")
+        #expect(CompactDuration.spoken(seconds: 181) == "3 minutes and 1 second")
+    }
+
+    @Test("the chip form stays short, because it is a label and not a sentence")
+    func chipFormIsUnchanged() {
+        #expect(CompactDuration.label(seconds: 215) == "3m 35s")
+        #expect(CompactDuration.label(seconds: 60) == "1m")
+        #expect(CompactDuration.label(seconds: 45) == "45s")
+    }
+}
