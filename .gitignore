@@ -1,0 +1,13 @@
+.DS_Store
+*.xcuserstate
+xcuserdata/
+*.xcodeproj
+*.xcworkspace
+DerivedData/
+build/
+.build/
+.swiftpm/
+Package.resolved
+*.trace
+.env
+local.mk

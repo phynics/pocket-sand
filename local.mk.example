@@ -1,0 +1,5 @@
+# Copy to local.mk and point it at your own Kandev server.
+#
+# local.mk is gitignored, which is the point: the address of a private
+# server belongs on the machine that can reach it, not in a public repo.
+KANDEV ?= http://your-server:38429

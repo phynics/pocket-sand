@@ -1,0 +1,41 @@
+#!/bin/sh
+# Runs xcodegen with its setting presets visible.
+#
+# xcodegen looks for a `SettingPresets` directory next to its own binary, but the
+# Nix package installs them under `share/xcodegen/`. Without them xcodegen emits
+# no PRODUCT_NAME and no SDKROOT, and the resulting project fails to build with a
+# misleading "multiple commands produce .app" error.
+#
+# This wrapper stages the binary and the presets together in a temporary prefix.
+# It is safe to delete once the installed xcodegen finds its own presets.
+set -eu
+
+xcodegen_bin="$(command -v xcodegen || true)"
+if [ -z "$xcodegen_bin" ]; then
+	echo "xcodegen not found on PATH" >&2
+	exit 127
+fi
+
+real_bin="$(readlink -f "$xcodegen_bin")"
+presets="$(dirname "$real_bin")/../share/xcodegen/SettingPresets"
+
+if [ ! -d "$presets" ]; then
+	# Either a correct install, or a layout we do not know about. Run it as-is
+	# and let xcodegen report its own problems.
+	exec "$real_bin" "$@"
+fi
+
+staging="$(mktemp -d)"
+# The presets arrive read-only from the Nix store, so the copy has to be made
+# writable before it can be removed.
+cleanup() {
+	chmod -R u+w "$staging" 2>/dev/null || true
+	rm -rf "$staging"
+}
+trap cleanup EXIT INT TERM
+
+mkdir -p "$staging/bin"
+cp "$real_bin" "$staging/bin/xcodegen"
+cp -R "$presets" "$staging/bin/SettingPresets"
+
+"$staging/bin/xcodegen" "$@"

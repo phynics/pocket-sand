@@ -1,0 +1,11 @@
+[
+  {"action": "workspace.list", "payload": {}},
+  {"action": "workflow.list", "payload": {}},
+  {"action": "workflow.step.list", "payload": {}},
+  {"action": "task.list", "payload": {}},
+  {"action": "task.get", "payload": {}},
+  {"action": "message.list", "payload": {}},
+  {"action": "session.stop", "payload": {}},
+  {"action": "message.queue.add", "payload": {}},
+  {"action": "session.conversation.subscribe", "payload": {}}
+]
