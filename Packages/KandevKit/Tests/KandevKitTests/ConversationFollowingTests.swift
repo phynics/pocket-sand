@@ -109,6 +109,30 @@ final class StubConversationStream: KandevLiveConversations, @unchecked Sendable
         ])
     }
 
+    /// A session's state changing, shaped like the frames a live server sent.
+    func pushSessionState(
+        session: String = "s1",
+        task: String = "t1",
+        state: String,
+        activity: String? = nil,
+        primary: Bool = true
+    ) {
+        var payload: [String: JSONValue] = [
+            "session_id": .string(session),
+            "task_id": .string(task),
+            "new_state": .string(state),
+            "is_primary": .bool(primary),
+        ]
+        if let activity { payload["foreground_activity"] = .string(activity) }
+        continuation.yield(
+            KandevEnvelope(
+                type: .notification,
+                action: KandevAction.sessionStateChanged,
+                payload: .object(payload)
+            )
+        )
+    }
+
     var lastScopeID: String? { scopeIDs.last }
 }
 
@@ -378,6 +402,62 @@ struct TaskConversationFollowingTests {
 
         #expect(store.isFollowing == false)
         #expect(store.transcript.turns.count == 1)
+    }
+
+    /// The direct signal: an agent started from this screen changes nothing about the
+    /// task that was read when the screen opened, so the state has to come from the
+    /// session itself.
+    @Test("a session state change marks the open session as working")
+    func sessionStateMarksWorking() async {
+        let (store, _, _, stream) = await loaded()
+        #expect(store.isWorking == false)
+
+        stream.pushSessionState(state: "RUNNING", activity: "generating")
+
+        let working = await waitUntil { store.isWorking }
+        #expect(working, "the session's own state should reach the screen")
+    }
+
+    /// The screen shows one session, and a frame for another is not its business.
+    @Test("a session state change for another session is ignored")
+    func otherSessionsStateIsIgnored() async {
+        let (store, _, _, stream) = await loaded()
+
+        stream.pushSessionState(session: "s2", state: "RUNNING", activity: "generating")
+        _ = await waitUntil(timeout: .milliseconds(200)) { false }
+
+        #expect(store.isWorking == false)
+    }
+
+    /// The stream reports changes, not the state itself, so the read at open is the
+    /// starting point: a running task must not look idle just because no change has
+    /// arrived yet.
+    @Test("a task already running when opened is working from the start")
+    func runningTaskSeedsWorking() async {
+        let transcriptSource = StubTranscriptSource(
+            task: .success(
+                KandevTask(
+                    id: "t1",
+                    title: "A task",
+                    sessionCount: 1,
+                    primarySessionState: "RUNNING",
+                    foregroundActivity: "generating"
+                )
+            ),
+            sessions: .success([makeSession()]),
+            messages: ["s1": []]
+        )
+        let stream = StubConversationStream()
+        await stream.hub.start()
+        let store = TaskConversationStore(
+            transcriptSource: transcriptSource,
+            promptSource: StubPromptSource(),
+            conversationServer: stream
+        )
+
+        await store.load(taskID: "t1")
+
+        #expect(store.isWorking, "the read at open is the starting point")
     }
 }
 

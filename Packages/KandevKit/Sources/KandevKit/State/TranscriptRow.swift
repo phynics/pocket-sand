@@ -186,9 +186,6 @@ public struct TranscriptTurn: Sendable, Identifiable, Equatable {
             return live ? folded.markingLiveStep() : folded
         }
 
-        // One more line while the agent is writing, so the step being written is added
-        // rather than substituting for one of the steps that was already there.
-        let tailCount = recentLimit + (live ? 1 : 0)
         let lastMachineIndex = rows.lastIndex { $0.isMachineOutput }
         var items: [TranscriptItem] = []
         var tailPlaced = false
@@ -213,7 +210,7 @@ public struct TranscriptTurn: Sendable, Identifiable, Equatable {
                 // a turn that is open. A folded turn is one line by definition, and the
                 // reason to fold it is that its steps have stopped mattering.
                 if !condensing {
-                    items.append(contentsOf: Array(machine.suffix(tailCount)).collapsedRepeats())
+                    items.append(contentsOf: tailItems(generating: live, recentLimit: recentLimit))
                 }
                 tailPlaced = true
             }
@@ -234,6 +231,19 @@ public struct TranscriptTurn: Sendable, Identifiable, Equatable {
         }
 
         return live ? items.markingLiveStep() : items
+    }
+
+    /// The rows a run keeps on screen while the rest of it is folded into the summary.
+    ///
+    /// Empty when the work fits: there is no tail because there is nothing behind it.
+    /// This is the one definition of what that block holds — `items` draws it, and the
+    /// view fades its top edge — so the two cannot drift apart.
+    public func tailItems(
+        generating: Bool = false,
+        recentLimit: Int = TranscriptTurn.recentMachineRowLimit
+    ) -> [TranscriptItem] {
+        guard machineRows.count > recentLimit else { return [] }
+        return Array(machineRows.suffix(recentLimit + (generating ? 1 : 0))).collapsedRepeats()
     }
 
     /// Whether there is any machine output at all.

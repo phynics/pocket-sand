@@ -103,57 +103,19 @@ struct TranscriptTurnView: View {
         let items = turn.items(condensing: isCondensed, generating: isWorking, now: now)
 
         VStack(alignment: .leading, spacing: Theme.Space.base) {
-            ForEach(items) { item in
-                Group {
-                    switch item {
-                    case .row(let row) where row.kind != .status:
-                        // Every row is a way into the exchange. A line grows into the sheet
-                        // rather than into the paragraph it was standing in for: tapping the
-                        // work to read the work is the whole gesture, and it cannot undo the
-                        // fold the way an in-place expansion did.
-                        Button {
-                            onShowSteps(exchange(id: item.id, steps: turn.machineRows, focus: item.id))
-                        } label: {
-                            TranscriptRowView(row: row, isExpanded: false)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityHint("Opens this exchange")
+            ForEach(itemGroups(items)) { group in
+                switch group {
+                case .single(let item):
+                    itemView(item)
+                        // A step leaving the tail slides down and out, and the one arriving
+                        // slides up into place: that movement is the scroll, and it is what
+                        // says the work is progressing rather than redrawing. The summary's
+                        // own id never changes, so it stays put while its numbers roll.
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
 
-                    case .row(let row):
-                        // A lifecycle notice is a fact about the session, not a thing to open.
-                        TranscriptRowView(row: row, isExpanded: false)
-
-                    case .liveStep(let row):
-                        Button {
-                            onShowSteps(exchange(id: item.id, steps: turn.machineRows, focus: item.id))
-                        } label: {
-                            LiveStepView(row: row)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityHint("Opens this exchange")
-
-                    case .stepsSummary:
-                        StepsSummaryView(item: item, isRunning: isWorking) {
-                            guard let rows = item.stepsSummaryRows else { return }
-                            onShowSteps(exchange(id: item.id, steps: rows, focus: nil))
-                        }
-
-                    case .repeated(let id, let count, let row):
-                        Button {
-                            onShowSteps(exchange(id: id, steps: turn.machineRows, focus: id))
-                        } label: {
-                            RepeatedStepsView(count: count, row: row)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityHint("Opens this exchange")
-                        .id(id)
-                    }
+                case .tail(let tail):
+                    tailBlock(tail)
                 }
-                // A step leaving the tail slides down and out, and the one arriving
-                // slides up into place: that movement is the scroll, and it is what
-                // says the work is progressing rather than redrawing. The summary's
-                // own id never changes, so it stays put while its numbers roll.
-                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             // The duration sits on the rule at the end of a turn that is on show. A
@@ -174,6 +136,110 @@ struct TranscriptTurnView: View {
         // Animating the *set* of rows is what makes that read as one movement rather
         // than as two unrelated redraws.
         .animation(Motion.fold(reduceMotion: reduceMotion), value: items.map(\.id))
+    }
+
+    /// One item, drawn by what it is.
+    @ViewBuilder private func itemView(_ item: TranscriptItem) -> some View {
+        switch item {
+        case .row(let row) where row.kind != .status:
+            // Every row is a way into the exchange. A line grows into the sheet
+            // rather than into the paragraph it was standing in for: tapping the
+            // work to read the work is the whole gesture, and it cannot undo the
+            // fold the way an in-place expansion did.
+            Button {
+                onShowSteps(exchange(id: item.id, steps: turn.machineRows, focus: item.id))
+            } label: {
+                TranscriptRowView(row: row, isExpanded: false)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens this exchange")
+
+        case .row(let row):
+            // A lifecycle notice is a fact about the session, not a thing to open.
+            TranscriptRowView(row: row, isExpanded: false)
+
+        case .liveStep(let row):
+            Button {
+                onShowSteps(exchange(id: item.id, steps: turn.machineRows, focus: item.id))
+            } label: {
+                LiveStepView(row: row)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens this exchange")
+
+        case .stepsSummary:
+            StepsSummaryView(item: item, isRunning: isWorking) {
+                guard let rows = item.stepsSummaryRows else { return }
+                onShowSteps(exchange(id: item.id, steps: rows, focus: nil))
+            }
+
+        case .repeated(let id, let count, let row):
+            Button {
+                onShowSteps(exchange(id: id, steps: turn.machineRows, focus: id))
+            } label: {
+                RepeatedStepsView(count: count, row: row)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens this exchange")
+            .id(id)
+        }
+    }
+
+    /// The items, with a run's tail grouped so a fade can sit on its top edge.
+    ///
+    /// Grouped whenever the tail exists, not only while the run is working: the container
+    /// has to keep its identity when the turn ends, or the rows would be rebuilt and
+    /// flash at the moment the work stops. What changes with the run is the mask.
+    private func itemGroups(_ items: [TranscriptItem]) -> [ItemGroup] {
+        let tailIDs = Set(turn.tailItems(generating: isWorking).map(\.id))
+        let tailIndices = items.indices.filter { tailIDs.contains(items[$0].id) }
+
+        guard let first = tailIndices.first, let last = tailIndices.last else {
+            return items.map(ItemGroup.single)
+        }
+
+        var groups = items[..<first].map(ItemGroup.single)
+        groups.append(.tail(Array(items[first...last])))
+        groups.append(contentsOf: items[(last + 1)...].map(ItemGroup.single))
+        return groups
+    }
+
+    /// The run's tail, its top edge fading while the run is still adding rows.
+    @ViewBuilder private func tailBlock(_ tail: [TranscriptItem]) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Space.base) {
+            ForEach(tail) { item in
+                itemView(item)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        // Always masked, so only the gradient's stops change when the run ends and the
+        // block is not rebuilt. The top edge fades while the run is adding rows: those
+        // are the ones being pushed out by the ones arriving below, and the fade says a
+        // call is hidden behind the fold rather than gone.
+        .mask(
+            LinearGradient(
+                stops: isWorking
+                    ? [.init(color: .clear, location: 0), .init(color: .black, location: 0.15)]
+                    : [.init(color: .black, location: 0)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+    }
+
+    /// The items of a turn, or the run's tail as one block.
+    private enum ItemGroup: Identifiable {
+        case single(TranscriptItem)
+        case tail([TranscriptItem])
+
+        var id: String {
+            switch self {
+            case .single(let item): item.id
+            // Constant, not built from the rows: the tail keeps its identity as steps
+            // arrive, so the rows inside it diff and slide rather than being rebuilt.
+            case .tail: "tail"
+            }
+        }
     }
 
     /// One exchange, as the sheet wants it: what was said before, what was asked, the

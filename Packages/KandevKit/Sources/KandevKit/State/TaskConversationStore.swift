@@ -28,10 +28,21 @@ public final class TaskConversationStore {
     /// Whether a live subscription is running.
     public private(set) var isFollowing = false
 
+    /// Whether the open session is working, from the session's own state changes.
+    ///
+    /// The task read at load goes stale the moment an agent starts — which is the
+    /// ordinary case, because the person prompts from this screen — and nothing else
+    /// here updates it. This is the direct signal the server sends as a session's state
+    /// changes, and it is what the live tail, the fold's tense, and the composer's Stop
+    /// button read.
+    public private(set) var isWorking = false
+
     private let conversationServer: (any KandevLiveConversations)?
     private let sessionStarter: (any KandevSessionStarting)?
     private var follower: ConversationFollower?
     private var followTask: Task<Void, Never>?
+    /// The session-state subscription, which is separate from the conversation one.
+    private var stateWatchTask: Task<Void, Never>?
     /// The revision of the conversation log this screen has applied.
     ///
     /// Observable on purpose: it is where the live stream has got to, and a screen
@@ -147,6 +158,7 @@ public final class TaskConversationStore {
         }
 
         await stopFollowing()
+        watchSessionState(server: server)
         let follower = ConversationFollower(
             client: server,
             hub: server.hub,
@@ -171,11 +183,38 @@ public final class TaskConversationStore {
     public func stopFollowing() async {
         followTask?.cancel()
         followTask = nil
+        stateWatchTask?.cancel()
+        stateWatchTask = nil
         isFollowing = false
         appliedEpoch = nil
         appliedRevision = nil
         await follower?.stop()
         follower = nil
+    }
+
+    /// Follows the open session's state, which is how this screen learns an agent
+    /// started: the task is read once at load, and a turn begun from this screen
+    /// changes nothing about it.
+    ///
+    /// Independent of the conversation subscription on purpose. A subscription that
+    /// failed leaves a screen that still works by refetching, and the state signal is
+    /// true regardless.
+    private func watchSessionState(server: any KandevLiveConversations) {
+        let hub = server.hub
+        stateWatchTask = Task { [weak self] in
+            for await change in await hub.sessionStateChanges() {
+                self?.applySessionState(change)
+            }
+        }
+    }
+
+    /// Applies one session's state to the screen, if it is the session on screen.
+    ///
+    /// Matched by session rather than by primary: the switcher can put a secondary
+    /// session in front of the reader, and then its state is this screen's business.
+    func applySessionState(_ change: KandevSessionStateChange) {
+        guard change.sessionID == transcript.selectedSessionID else { return }
+        isWorking = change.isWorking
     }
 
     func apply(_ change: KandevConversationChange) async {
@@ -211,6 +250,9 @@ public final class TaskConversationStore {
     public func load(taskID: String) async {
         self.taskID = taskID
         await transcript.load(taskID: taskID)
+        // The state stream only reports changes, so the read that just happened is the
+        // starting point: a task already running when it was opened must not look idle.
+        isWorking = transcript.task?.isWorking ?? false
         await bindComposer()
         await startFollowing()
         refreshPolicy.record(at: Date())
@@ -286,6 +328,7 @@ public final class TaskConversationStore {
         guard sessionID != transcript.selectedSessionID else { return }
         await transcript.select(sessionID: sessionID)
         guard transcript.selectedSessionID == sessionID else { return }
+        isWorking = transcript.task?.isWorking ?? false
         await bindComposer()
         await startFollowing()
     }

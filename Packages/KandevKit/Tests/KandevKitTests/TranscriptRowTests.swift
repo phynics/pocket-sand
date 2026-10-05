@@ -338,6 +338,28 @@ struct RunSummaryTests {
         #expect(items.last?.stepsSummaryLabel == "Ran 20 commands", "the line goes underneath the work")
     }
 
+    /// The rows the fade is drawn over are exactly the rows the tail shows, so the
+    /// view and the fold cannot disagree about which calls are leaving.
+    @Test("the tail is the last few rows, and empty when nothing is hidden")
+    func theTailIsTheLastFewRows() {
+        #expect(turn(machineRows(20)).tailItems().map(\.id) == ["m15", "m16", "m17", "m18", "m19"])
+        #expect(turn(machineRows(20)).tailItems(generating: true).count == 6,
+                "one more place while the newest step is being written")
+        #expect(turn(machineRows(5)).tailItems().isEmpty, "a run that fits has nothing behind it")
+        #expect(turn(machineRows(3), condensed: true).tailItems().isEmpty)
+    }
+
+    /// What `items` draws and what `tailItems` describes have to be the same rows, or
+    /// the fade would sit over the wrong ones.
+    @Test("the tail the view fades is the tail the turn draws")
+    func theDrawnTailMatchesTheDescribedOne() {
+        let rows = machineRows(20)
+        let drawn = turn(rows).items(condensing: false, generating: true)
+            .filter { !$0.isStepsSummary }
+            .map(\.id)
+        #expect(drawn == turn(rows).tailItems(generating: true).map(\.id))
+    }
+
     /// A finished turn shows the summary alone. The work is done, and the gist is
     /// what it is worth.
     @Test("a finished turn shows only the summary")

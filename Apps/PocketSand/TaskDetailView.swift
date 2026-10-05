@@ -22,6 +22,11 @@ struct TaskDetailView: View {
     /// Whether the newest row is on screen. Following is a courtesy, and yanking
     /// someone out of the history they are reading is not.
     @State private var isAtNewest = true
+    /// The content's last-measured height, so a change in it is read as growth.
+    @State private var contentHeight: CGFloat = 0
+
+    /// The scroll's aiming point: a view at the true foot of the conversation.
+    private static let bottomMarkerID = "conversation-bottom"
     /// Which agent to start. Chosen before starting rather than after: an agent
     /// costs money and runs on someone's machine.
     @State private var selectedProfileID: String?
@@ -116,30 +121,24 @@ struct TaskDetailView: View {
                         .frame(maxWidth: Theme.measure, alignment: .leading)
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
+                // Growth is the conversation moving: a new row, the step being written,
+                // the summary taking a second line, the queue arriving. Measured here,
+                // where it is the content's own height, rather than on the scroll view,
+                // where it would be the frame's.
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                    let grew = height > contentHeight
+                    contentHeight = height
+                    // Only a reader already at the foot is followed. Following is a
+                    // courtesy, and yanking someone out of the history they are reading
+                    // is not. No animation: the transcript's own transitions are the
+                    // movement, and a second animation on the scroll lands somewhere
+                    // neither of them meant.
+                    guard grew, isAtNewest else { return }
+                    proxy.scrollTo(Self.bottomMarkerID, anchor: .bottom)
+                }
             }
             // A conversation reads newest-last, so it opens at the bottom.
             .defaultScrollAnchor(.bottom)
-            .onScrollGeometryChange(for: Bool.self) { geometry in
-                let fromBottom = geometry.contentSize.height
-                    - (geometry.contentOffset.y + geometry.containerSize.height)
-                return fromBottom < 80
-            } action: { _, atNewest in
-                isAtNewest = atNewest
-            }
-            .onChange(of: newestRowID) { _, newest in
-                guard let newest, isAtNewest else { return }
-                withAnimation(.easeOut(duration: 0.2)) {
-                    proxy.scrollTo(newest, anchor: .bottom)
-                }
-            }
-            // A row arriving is not the only thing that moves the bottom: the step
-            // being written grows in place, and the paragraph follows its end. Without
-            // this the newest words slide under the composer, which is the one part of
-            // a live turn worth watching.
-            .onChange(of: liveStepLength) { _, _ in
-                guard let newest = newestRowID, isAtNewest else { return }
-                proxy.scrollTo(newest, anchor: .bottom)
-            }
             .refreshable { await conversation.load(taskID: taskID) }
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
@@ -155,6 +154,18 @@ struct TaskDetailView: View {
             // and the one it opens at has to be said out loud.
             .sheet(item: $stepsContent) { content in
                 TurnStepsView(content: content, title: transcript.task?.title ?? "Task")
+            }
+            // The sheet opens on a snapshot of the exchange, and a running turn keeps
+            // producing steps behind it: left alone, the snapshot freezes at the moment
+            // it was tapped. Rebuilding it from the transcript keeps the sheet the
+            // exchange it claims to be. Row ids are the server's message ids, so nothing
+            // already on screen moves when it is rebuilt.
+            .onChange(of: transcript.turns) { _, _ in
+                guard let current = stepsContent,
+                      let rebuilt = rebuiltSheet(current),
+                      rebuilt != current
+                else { return }
+                stepsContent = rebuilt
             }
         }
     }
@@ -174,6 +185,15 @@ struct TaskDetailView: View {
         VStack(alignment: .leading, spacing: Theme.Space.section) {
             transcriptBody
             queuedPrompts
+            // The scroll's aiming point: the true foot of the conversation, under the
+            // queue, so "follow the newest" does not stop at the last turn while prompts
+            // wait below it. It is also what says whether the reader is at the foot — a
+            // view that is on screen or is not, rather than arithmetic against a composer
+            // whose height changes with the draft.
+            Color.clear
+                .frame(height: 2)
+                .id(Self.bottomMarkerID)
+                .onScrollVisibilityChange { visible in isAtNewest = visible }
         }
     }
 
@@ -462,17 +482,36 @@ struct TaskDetailView: View {
         }
     }
 
-    /// The row a live update should scroll to: the last thing on screen.
-    private var newestRowID: String? {
-        transcript.turns.last?.rows.last?.id
+    /// Which turn a sheet's id came from: a row's own id, the first machine row of a run
+    /// whose summary was tapped, or the first of a run folded into a repeat.
+    private func turnIndex(forSheetID id: String) -> Int? {
+        let rowID: String
+        if id.hasPrefix("steps:") {
+            rowID = String(id.dropFirst("steps:".count))
+        } else if id.hasPrefix("repeat:") {
+            rowID = String(id.dropFirst("repeat:".count))
+        } else {
+            rowID = id
+        }
+        return transcript.turns.firstIndex { $0.rows.contains { $0.id == rowID } }
     }
 
-    /// How much the last row has to say, so growth inside one row is noticed.
-    private var liveStepLength: Int {
-        guard isWorking else { return 0 }
-        return transcript.turns.last?.rows.last?.text.count ?? 0
+    /// The sheet's content, rebuilt from the transcript it came from.
+    ///
+    /// Nil when the turn is gone — a refetch that dropped it — in which case the sheet
+    /// keeps what it has rather than being emptied.
+    private func rebuiltSheet(_ current: TurnSheetContent) -> TurnSheetContent? {
+        guard let index = turnIndex(forSheetID: current.id) else { return nil }
+        let turn = transcript.turns[index]
+        return TurnSheetContent(
+            id: current.id,
+            previousReply: transcript.turns.reply(preceding: index),
+            prompt: turn.promptRow,
+            steps: turn.machineRows,
+            reply: turn.replyRow,
+            focus: current.focus
+        )
     }
-
 
     private var failureMessage: String? {
         if case .failed(let message) = transcript.phase { return message }
@@ -578,8 +617,10 @@ struct TaskDetailView: View {
         }
     }
 
+    /// Read from the store, not the task snapshot: an agent started from this screen
+    /// does not change the task that was read when it opened.
     private var isWorking: Bool {
-        transcript.task?.isWorking ?? false
+        conversation.isWorking
     }
 
     /// What the composer tried to do and could not.

@@ -171,6 +171,12 @@ struct NewTaskView: View {
         }
     }
 
+    /// Whether the choices are still on their way.
+    ///
+    /// The rows say so rather than claiming the server has none: "None set up" while a
+    /// read is in flight is a statement about the server that nobody has made yet.
+    private var isResolving: Bool { store.isLoadingOptions }
+
     // MARK: - The doors
 
     /// All three, named, with the chosen one in ink and a rule under it.
@@ -269,10 +275,12 @@ struct NewTaskView: View {
                 } label: {
                     consequenceRow(
                         "Filed in",
-                        value: filingValue,
-                        isChosen: store.workflowID != nil
+                        value: isResolving ? "Loading…" : filingValue,
+                        isChosen: store.workflowID != nil,
+                        isPickable: !isResolving
                     )
                 }
+                .disabled(isResolving)
                 .listRowBackground(Color.clear)
                 .id(ScreenshotTour.Anchor.filedIn)
             }
@@ -284,10 +292,12 @@ struct NewTaskView: View {
             } label: {
                 consequenceRow(
                     "Agent",
-                    value: selectedProfile?.displayName ?? "None set up",
-                    isChosen: store.agentProfileID != nil
+                    value: isResolving ? "Loading…" : (selectedProfile?.displayName ?? "None set up"),
+                    isChosen: store.agentProfileID != nil,
+                    isPickable: !isResolving
                 )
             }
+            .disabled(isResolving)
             .listRowBackground(Color.clear)
             .id(ScreenshotTour.Anchor.agent)
 
@@ -310,8 +320,15 @@ struct NewTaskView: View {
     /// one is the setup chat, which is named where the need arises.
     @ViewBuilder private var repositoryRow: some View {
         if store.repositories.isEmpty {
-            consequenceRow("Repository", value: "None configured", isChosen: false, isPickable: false)
-                .listRowBackground(Color.clear)
+            // "None configured" is a claim about the server, and while the read is in
+            // flight there is no claim to make yet.
+            consequenceRow(
+                "Repository",
+                value: isResolving ? "Loading…" : "None configured",
+                isChosen: false,
+                isPickable: false
+            )
+            .listRowBackground(Color.clear)
         } else {
             Menu {
                 Button("The workspace's own") { store.repositoryID = nil }
@@ -329,7 +346,7 @@ struct NewTaskView: View {
 
     @ViewBuilder private var destinationFooter: some View {
         VStack(alignment: .leading, spacing: Theme.Space.snug) {
-            if store.repositories.isEmpty {
+            if store.repositories.isEmpty && !isResolving {
                 Text("No repositories in this workspace yet. **Setup** can add one — a GitHub repository, or a path on the machine running Kandev.")
                     .font(Theme.Face.chrome(.footnote))
                     .foregroundStyle(Theme.muted)
