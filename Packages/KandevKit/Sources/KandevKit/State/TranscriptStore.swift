@@ -95,7 +95,17 @@ public final class TranscriptStore {
         phase = .loaded
     }
 
-    /// Whether a turn starts folded away.
+    /// Merges a change to the task on screen.
+    ///
+    /// The task is read once when the screen opens, and the server renames a task shortly after
+    /// it is created — an agent replaces the provisional title derived from the first sentence.
+    /// Without this the screen keeps the name a task had for the first few seconds of its life.
+    public func apply(_ update: KandevTaskUpdate) {
+        guard let task, update.taskID == task.id else { return }
+        self.task = update.applied(to: task)
+    }
+
+    /// Whether a turn should start folded away.
     ///
     /// Everything but the turn being written. A finished turn folds as soon as its work
     /// stops — the reader is following the run in flight, and the history of what the

@@ -43,6 +43,8 @@ public final class TaskConversationStore {
     private var followTask: Task<Void, Never>?
     /// The session-state subscription, which is separate from the conversation one.
     private var stateWatchTask: Task<Void, Never>?
+    /// The task subscription, which is how a rename reaches the title.
+    private var taskWatchTask: Task<Void, Never>?
     /// The revision of the conversation log this screen has applied.
     ///
     /// Observable on purpose: it is where the live stream has got to, and a screen
@@ -159,6 +161,7 @@ public final class TaskConversationStore {
 
         await stopFollowing()
         watchSessionState(server: server)
+        watchTask(server: server)
         let follower = ConversationFollower(
             client: server,
             hub: server.hub,
@@ -185,6 +188,8 @@ public final class TaskConversationStore {
         followTask = nil
         stateWatchTask?.cancel()
         stateWatchTask = nil
+        taskWatchTask?.cancel()
+        taskWatchTask = nil
         isFollowing = false
         appliedEpoch = nil
         appliedRevision = nil
@@ -215,6 +220,26 @@ public final class TaskConversationStore {
     func applySessionState(_ change: KandevSessionStateChange) {
         guard change.sessionID == transcript.selectedSessionID else { return }
         isWorking = change.isWorking
+    }
+
+    /// Follows changes to this task, which is how a rename reaches the title.
+    ///
+    /// The server renames a task shortly after it is created — an agent replaces the provisional
+    /// title taken from the first sentence — and the task is read once when the screen opens, so
+    /// without this the screen keeps the name the work had for its first few seconds.
+    private func watchTask(server: any KandevLiveConversations) {
+        let hub = server.hub
+        taskWatchTask = Task { [weak self] in
+            for await signal in await hub.taskSignals() {
+                self?.applyTaskSignal(signal)
+            }
+        }
+    }
+
+    /// Applies a change to the task this screen is about, and ignores every other.
+    func applyTaskSignal(_ signal: KandevTaskSignal) {
+        guard signal.update.taskID == taskID else { return }
+        transcript.apply(signal.update)
     }
 
     func apply(_ change: KandevConversationChange) async {

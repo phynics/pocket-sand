@@ -78,6 +78,13 @@ struct TaskListView: View {
                     guard phase == .active else { return }
                     Task { await store.refreshIfDue() }
                 }
+                // Coming back from a task: the server may have renamed it while the detail was
+                // on screen and this list was not listening. A rename is a `task.updated`, and
+                // a signal only reaches whoever is subscribed to it at the time.
+                .onChange(of: path) { _, path in
+                    guard path.isEmpty else { return }
+                    Task { await store.refresh() }
+                }
                 .overlay(alignment: .bottomTrailing) {
                     newTaskButton
                         .padding(.trailing, Theme.Space.loose)

@@ -133,6 +133,20 @@ final class StubConversationStream: KandevLiveConversations, @unchecked Sendable
         )
     }
 
+    /// A task changing, in the frame the server publishes for it.
+    func pushTaskUpdated(task: String = "t1", title: String) {
+        continuation.yield(
+            KandevEnvelope(
+                type: .notification,
+                action: KandevAction.taskUpdated,
+                payload: .object([
+                    "task_id": .string(task),
+                    "title": .string(title),
+                ])
+            )
+        )
+    }
+
     var lastScopeID: String? { scopeIDs.last }
 }
 
@@ -427,6 +441,33 @@ struct TaskConversationFollowingTests {
         _ = await waitUntil(timeout: .milliseconds(200)) { false }
 
         #expect(store.isWorking == false)
+    }
+
+    /// The server renames a task shortly after it is created — an agent replaces the
+    /// provisional title taken from the first sentence — and the task is read once when the
+    /// screen opens. Without this the screen keeps the name the work had for its first few
+    /// seconds.
+    @Test("a rename reaches the screen as a task update")
+    func renameReachesTheScreen() async {
+        let (store, _, _, stream) = await loaded()
+        #expect(store.transcript.task?.title == "A task")
+
+        stream.pushTaskUpdated(title: "Rename the provisional title")
+
+        let renamed = await waitUntil {
+            store.transcript.task?.title == "Rename the provisional title"
+        }
+        #expect(renamed, "the title the server chose should replace the provisional one")
+    }
+
+    @Test("an update for another task is ignored")
+    func otherTaskUpdateIsIgnored() async {
+        let (store, _, _, stream) = await loaded()
+
+        stream.pushTaskUpdated(task: "t9", title: "Someone else's work")
+        _ = await waitUntil(timeout: .milliseconds(200)) { false }
+
+        #expect(store.transcript.task?.title == "A task")
     }
 
     /// The stream reports changes, not the state itself, so the read at open is the
