@@ -125,6 +125,8 @@ for appearance in $APPEARANCES; do
                 [ -n "${KANDEV_TOKEN:-}" ] && environment+=("SIMCTL_CHILD_KANDEV_DEV_TOKEN=$KANDEV_TOKEN")
             fi
             [ -n "${KANDEV_TASK:-}" ] && environment+=("SIMCTL_CHILD_KANDEV_TASK=$KANDEV_TASK")
+            # SCROLL names a place on the screen to be shown, for what is below the fold.
+            [ -n "${SCROLL:-}" ] && environment+=("SIMCTL_CHILD_KANDEV_SCROLL=$SCROLL")
 
             xcrun simctl terminate "$DEVICE" "$BUNDLE_ID" >/dev/null 2>&1 || true
             rm -f "$ready_file"
@@ -150,7 +152,9 @@ for appearance in $APPEARANCES; do
                 sleep 0.25
             done
 
-            file="$OUT/$screen-$appearance-$size.png"
+            suffix=""
+            [ -n "${SCROLL:-}" ] && suffix="-$SCROLL"
+            file="$OUT/$screen-$appearance-$size$suffix.png"
             xcrun simctl io "$DEVICE" screenshot "$file" >/dev/null 2>&1
             captured=$((captured + 1))
 

@@ -16,6 +16,13 @@ import Foundation
 /// The companion is `scripts/screenshots`, which iterates the screens, appearances and
 /// content sizes, and waits for the readiness marker rather than guessing a duration.
 enum ScreenshotTour {
+    /// Places on a screen a run can ask to be shown, by the name of the thing there.
+    enum Anchor: String {
+        case filedIn = "filedin"
+        case agent
+        case repository
+    }
+
     /// The screens a run can ask for by name.
     enum Screen: String {
         case list
@@ -40,6 +47,18 @@ enum ScreenshotTour {
     /// Which task `detail` should open.
     static var taskID: String? {
         environment["KANDEV_TASK"].flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    /// An anchor to scroll to, for the part of a screen that is below the fold.
+    ///
+    /// A still can only be taken of what is on screen, and plenty of what is worth
+    /// looking at is at the bottom of a form. Without this, a defect down there is
+    /// invisible to a run — which is exactly what happened to the row layout at the
+    /// largest text sizes.
+    static var anchor: Anchor? {
+        environment["KANDEV_SCROLL"].flatMap { value in
+            value.isEmpty ? nil : Anchor(rawValue: value)
+        }
     }
 
     /// A server to talk to instead of the one in the Keychain, so a run does not depend
@@ -94,6 +113,7 @@ enum ScreenshotTour {
     #else
     static var screen: Screen? { nil }
     static var taskID: String? { nil }
+    static var anchor: Anchor? { nil }
     static var server: (address: String, token: String?)? { nil }
     static var isActive: Bool { false }
 

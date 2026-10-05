@@ -34,6 +34,7 @@ struct NewTaskView: View {
     let onOpened: (OpenedTask) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var mode: Mode
 
     init(store: NewTaskStore, initialMode: Mode = .task, onOpened: @escaping (OpenedTask) -> Void) {
@@ -117,6 +118,7 @@ struct NewTaskView: View {
             // the paper, not in a box on it.
             .listStyle(.plain)
             .navigationTitle(mode == .task ? "New task" : "Start a chat")
+            .scrollToRequestedAnchor()
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
@@ -178,26 +180,49 @@ struct NewTaskView: View {
     /// vocabulary the spine uses on a task row.
     private var modeSection: some View {
         Section {
-            HStack(spacing: Theme.Space.loose) {
-                ForEach(Mode.allCases) { candidate in
-                    Button {
-                        mode = candidate
-                    } label: {
-                        VStack(spacing: Theme.Space.hair) {
-                            Text(candidate.title)
-                                .font(Theme.Face.chrome(.callout, weight: mode == candidate ? .semibold : .regular))
-                                .foregroundStyle(mode == candidate ? Theme.ink : Theme.muted)
-                            Rule().opacity(mode == candidate ? 1 : 0)
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    // Stacked, because three words cannot share a line at these sizes and
+                    // "Set-up" broken across two is worse than three lines: the hyphen is
+                    // the layout admitting it has nowhere to put the word.
+                    VStack(alignment: .leading, spacing: Theme.Space.base) {
+                        ForEach(Mode.allCases) { candidate in
+                            modeButton(candidate, fillsWidth: true)
                         }
-                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(mode == candidate ? [.isSelected] : [])
+                } else {
+                    HStack(spacing: Theme.Space.loose) {
+                        ForEach(Mode.allCases) { candidate in
+                            modeButton(candidate, fillsWidth: false)
+                        }
+                        Spacer(minLength: 0)
+                    }
                 }
-                Spacer(minLength: 0)
             }
             .listRowBackground(Color.clear)
         }
+    }
+
+    /// One door: its name, and a rule under the one that is chosen.
+    ///
+    /// A rule rather than a filled pill: this app has no accent colour and no filled
+    /// containers, so the way to say "this one" is weight and a line.
+    private func modeButton(_ candidate: Mode, fillsWidth: Bool) -> some View {
+        Button {
+            mode = candidate
+        } label: {
+            VStack(alignment: .leading, spacing: Theme.Space.hair) {
+                Text(candidate.title)
+                    .font(Theme.Face.chrome(.callout, weight: mode == candidate ? .semibold : .regular))
+                    .foregroundStyle(mode == candidate ? Theme.ink : Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                Rule().opacity(mode == candidate ? 1 : 0)
+            }
+            .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(mode == candidate ? [.isSelected] : [])
     }
 
     // MARK: - The one input
@@ -210,7 +235,10 @@ struct NewTaskView: View {
                 Text(mode.question)
                     .font(Theme.Face.chrome(.footnote))
                     .foregroundStyle(Theme.muted)
-                TextField(mode.example, text: $store.brief, axis: .vertical)
+                // No example at the accessibility sizes: a placeholder in a growing
+                // field does not wrap, it truncates, and "Fix the flaky t…" is worse
+                // than the label above saying what the field is for.
+                TextField(dynamicTypeSize.isAccessibilitySize ? "" : mode.example, text: $store.brief, axis: .vertical)
                     .font(Theme.Face.prose(.title3))
                     .foregroundStyle(Theme.ink)
                     .lineSpacing(Theme.proseLineSpacing)
@@ -246,6 +274,7 @@ struct NewTaskView: View {
                     )
                 }
                 .listRowBackground(Color.clear)
+                .id(ScreenshotTour.Anchor.filedIn)
             }
 
             Menu {
@@ -260,8 +289,10 @@ struct NewTaskView: View {
                 )
             }
             .listRowBackground(Color.clear)
+            .id(ScreenshotTour.Anchor.agent)
 
             repositoryRow
+                .id(ScreenshotTour.Anchor.repository)
         } header: {
             Text(mode == .task ? "Where it goes" : "Who takes it")
                 .font(Theme.Face.chrome(.footnote))
@@ -341,22 +372,48 @@ struct NewTaskView: View {
         isChosen: Bool,
         isPickable: Bool = true
     ) -> some View {
-        HStack(spacing: Theme.Space.snug) {
-            Text(label)
-                .font(Theme.Face.chrome(.callout))
-                .foregroundStyle(Theme.muted)
-            Spacer(minLength: Theme.Space.base)
-            Text(value)
-                .font(Theme.Face.chrome(.callout))
-                .foregroundStyle(isChosen ? Theme.ink : Theme.muted)
-                .lineLimit(1)
-            if isPickable {
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Theme.ink)
+        // Two arrangements, and the first that fits is the one used. At the larger text
+        // sizes a label and an answer cannot share a line, and what happens then is not
+        // a smaller answer — it is an ellipsis where the answer should be, which is how
+        // "Development · its start step" became "No wo…" in a screenshot run.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: Theme.Space.snug) {
+                labelText(label)
+                Spacer(minLength: Theme.Space.base)
+                valueText(value, isChosen: isChosen)
+                glyph(isPickable: isPickable)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: Theme.Space.snug) {
+                VStack(alignment: .leading, spacing: Theme.Space.hair) {
+                    labelText(label)
+                    valueText(value, isChosen: isChosen)
+                }
+                Spacer(minLength: 0)
+                glyph(isPickable: isPickable)
             }
         }
         .contentShape(Rectangle())
+    }
+
+    private func labelText(_ label: String) -> some View {
+        Text(label)
+            .font(Theme.Face.chrome(.callout))
+            .foregroundStyle(Theme.muted)
+    }
+
+    private func valueText(_ value: String, isChosen: Bool) -> some View {
+        Text(value)
+            .font(Theme.Face.chrome(.callout))
+            .foregroundStyle(isChosen ? Theme.ink : Theme.muted)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder private func glyph(isPickable: Bool) -> some View {
+        if isPickable {
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Theme.ink)
+        }
     }
 
     private var selectedProfile: KandevAgentProfile? {
@@ -402,5 +459,30 @@ struct NewTaskView: View {
             guard let chat = await store.startChat(kind: kind) else { return }
             onOpened(OpenedTask(taskID: chat.taskID, sentence: store.brief))
         }
+    }
+}
+
+/// Scrolls a screen to the anchor a screenshot run asked for.
+///
+/// A still can only show what is on screen, so without this a run photographs the top
+/// of every screen and nothing else — which is how the row layout at the largest text
+/// sizes went unchecked. Inert unless `KANDEV_SCROLL` names an anchor.
+private struct RequestedAnchorScroll: ViewModifier {
+    func body(content: Content) -> some View {
+        ScrollViewReader { proxy in
+            content
+                .task {
+                    guard let anchor = ScreenshotTour.anchor else { return }
+                    // One turn of the run loop, so the rows exist to be scrolled to.
+                    try? await Task.sleep(for: .milliseconds(50))
+                    proxy.scrollTo(anchor, anchor: .center)
+                }
+        }
+    }
+}
+
+extension View {
+    func scrollToRequestedAnchor() -> some View {
+        modifier(RequestedAnchorScroll())
     }
 }

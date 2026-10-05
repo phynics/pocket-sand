@@ -275,11 +275,10 @@ struct TaskListView: View {
             }
 
             if case .failed(let message) = store.phase {
-                Section {
-                    Text(message)
-                        .font(Theme.Face.chrome(.footnote))
-                        .foregroundStyle(Theme.muted)
-                }
+                // The same treatment every other failure in the app gets: a red mark and
+                // ink words. Muted grey read as a note about the list rather than as the
+                // reason it is empty.
+                Section { FailureNote(message: message) }
             }
 
             // Grouped: conversations first, then a section per project. A workspace

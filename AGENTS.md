@@ -185,6 +185,11 @@ The pieces, and each one is load-bearing:
 - **The status bar is frozen** (`simctl status_bar override`) so a clock cannot turn
   every diff into a difference in the time.
 - **`KANDEV` and `KANDEV_TOKEN` come from `local.mk`**, like the live suites.
+- **`SCROLL=<anchor>` shows the part of a screen below the fold**, because a still can
+  only capture what is on screen and plenty of what is worth looking at is at the
+  bottom of a form. A screen names its own anchors (see `ScreenshotTour.Anchor`); the
+  file name carries the anchor so two views of one screen do not overwrite each other.
+  Adding an anchor for a new region is part of photographing it.
 
 What it reaches: appearance (`simctl ui appearance`), text size (`content_size`,
 including the accessibility sizes), and every screen the tour knows by name. What it

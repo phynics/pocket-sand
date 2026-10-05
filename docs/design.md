@@ -179,6 +179,31 @@ animated on the *set* of row ids) and the numbers in the line roll rather than j
 (`.contentTransition(.numericText())`). That is the only thing on the screen that changes
 without anyone touching it, and it is why the line does not need a spinner.
 
+## Text size
+
+Checking the app at the accessibility text sizes was the first thing the screenshot
+flow did that reading code could not, and it found four defects in a screen I had
+already looked at a dozen times. The rules that came out of fixing them:
+
+- **A row that holds a label and an answer needs two arrangements.** At
+  `accessibility-extra-extra-large` one line cannot hold both, and what happens then
+  is not a smaller answer — it is `Filed in  No wo…`, an ellipsis where the answer
+  should be. `ViewThatFits` tries one line and falls back to the label over the answer,
+  which is why the answer is neither truncated nor shrunk.
+- **A row of three named things stacks.** "Task Chat Setup" at those sizes broke
+  *inside* the word — "Set-" / "up" — and a hyphen is the layout admitting it has
+  nowhere to put the word. Stacked, each gets its own line and its own rule.
+- **A placeholder in a growing field does not wrap, it truncates.** `Fix the flaky
+  t…` is worse than no example at all, so at the accessibility sizes the example goes
+  and the field's label — which is always there and always legible — does the work.
+- **A failure is a failure at every size.** The task list drew its load failure as a
+  muted grey paragraph, which at these sizes became a screen-filling grey wall that
+  read as a note about the list rather than as the reason it was empty. It gets the
+  same red mark and ink words every other failure in the app gets.
+
+None of these were visible at the default text size. They are the argument for the
+screenshot flow in one paragraph: the app is used at sizes the developer is not using.
+
 ## Motion
 
 One animation in the app: a working row's spine dims and brightens. It answers the
@@ -432,7 +457,8 @@ thing that is in the way**.
   leaves the step menu with nothing to offer, so it is hidden. The header then
   shows the agent and no step. Fixing it means the detail screen loading its own
   steps.
-- The list, the transcript and the create screen have been looked at on an iPhone.
+- The list, the transcript and the create screen have been looked at on an iPhone, and
+  the create screen at the accessibility text sizes.
   **The archive view, the connect screen, the step menu and the session picker have
   not been seen at all.** Nor has anything on this screen been *driven*: the menus,
   the doors and the setup chat were built and never tapped, because a simulator has
