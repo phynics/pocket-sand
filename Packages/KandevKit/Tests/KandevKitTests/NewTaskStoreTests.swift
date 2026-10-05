@@ -77,31 +77,34 @@ struct NewTaskStoreTests {
     @Test("requires a workflow and a title, and nothing else")
     func validation() async {
         let (store, _, _, _) = await store()
-        #expect(store.canCreate == false, "nothing is chosen yet")
+        #expect(store.canFile == false, "nothing is chosen yet")
 
         await store.loadOptions()
-        #expect(store.canCreate == false, "a workflow alone is not a task")
+        #expect(store.canFile == false, "a workflow alone is not a task")
 
         store.title = "   "
-        #expect(store.canCreate == false, "whitespace is not a title")
+        #expect(store.canFile == false, "whitespace is not a title")
 
         store.title = "Implement the thing"
-        #expect(store.canCreate)
+        #expect(store.canFile)
         #expect(store.brief.isEmpty, "a brief is optional")
     }
 
-    /// Changing the workflow changes which steps exist, so a step from the old
-    /// workflow must not survive the change.
-    @Test("changing the workflow reloads its steps and forgets the old choice")
-    func changingWorkflowReloadsSteps() async {
+    /// Filing is one decision, so choosing a workflow and a step together is one
+    /// call — and a step from the old workflow cannot survive it.
+    @Test("filing picks a workflow and a step together")
+    func filingPicksBoth() async {
         let (store, _, _, _) = await store()
         await store.loadOptions()
         store.stepID = "s-work"
 
-        store.selectWorkflow("wf2")
-
-        #expect(store.stepID == nil, "the old step belonged to another workflow")
+        store.file(workflowID: "wf2", stepID: "s-plan")
+        #expect(store.stepID == "s-plan")
         #expect(store.orderedSteps.map(\.id) == ["s-plan"])
+
+        store.file(workflowID: "wf1", stepID: nil)
+        #expect(store.stepID == nil, "no step means the workflow's own start step")
+        #expect(store.orderedSteps.map(\.id) == ["s-backlog", "s-work"])
     }
 
     @Test("creates with the choices made, and reports the task the server made")
@@ -215,5 +218,219 @@ struct KandevTaskDraftTests {
         let draft = KandevTaskDraft(workspaceID: "w1", workflowID: "wf1", title: "T", brief: "")
 
         #expect(draft.payload["description"] == nil)
+    }
+}
+
+/// A chat starter with no server behind it.
+actor StubChatStarter: KandevChatStarting {
+    struct Request: Sendable, Equatable {
+        var kind: KandevChatKind
+        var workspaceID: String
+        var agentProfileID: String
+        var title: String?
+        var repositories: [String]
+    }
+
+    private(set) var requests: [Request] = []
+    var result: Result<KandevChat, any Error> = .success(
+        KandevChat(taskID: "chat-task", sessionID: "chat-session", agentProfileID: "p1")
+    )
+    var failure: (any Error)?
+
+    func failNext(with error: any Error) { failure = error }
+
+    func startChat(
+        kind: KandevChatKind,
+        workspaceID: String,
+        agentProfileID: String,
+        title: String?,
+        repositories: [String]
+    ) async throws -> KandevChat {
+        requests.append(
+            Request(
+                kind: kind,
+                workspaceID: workspaceID,
+                agentProfileID: agentProfileID,
+                title: title,
+                repositories: repositories
+            )
+        )
+        if let failure {
+            self.failure = nil
+            throw failure
+        }
+        return try result.get()
+    }
+
+    func lastRequest() -> Request? { requests.last }
+}
+
+@MainActor
+@Suite("NewTaskStore, the three doors")
+struct NewTaskDoorTests {
+    /// A store with a chat starter attached, in the state a real screen starts in:
+    /// options loaded, one workflow, one agent.
+    private func store() async -> (NewTaskStore, StubChatStarter) {
+        let source = FakeTaskSource()
+        await source.setWorkspaces([
+            KandevWorkspace(id: "w1", name: "Default Workspace", scopes: []),
+        ])
+        await source.setWorkflows([
+            KandevWorkflow(id: "wf1", name: "Development", sortOrder: 0),
+        ])
+        await source.setSteps(
+            [KandevWorkflowStep(id: "s-backlog", name: "Backlog", position: 0)],
+            forWorkflow: "wf1"
+        )
+        let profiles = StubSessionStarter()
+        await profiles.setProfiles([
+            KandevAgentProfile(id: "p1", name: "worker", model: "deepseek", enabled: true),
+        ])
+        let chats = StubChatStarter()
+        let store = NewTaskStore(
+            taskSource: source,
+            creator: StubTaskCreator(),
+            profileSource: profiles,
+            chatStarter: chats,
+            workspaceID: "w1"
+        )
+        await store.loadOptions()
+        return (store, chats)
+    }
+
+    @Test("a title writes itself from the brief")
+    func titleWritesItself() async {
+        let (store, _) = await store()
+
+        store.brief = "Fix the flaky test in the auth suite"
+        #expect(store.title == "Fix the flaky test in the auth suite")
+
+        store.brief = "Fix the flaky test in the auth suite\nAnd add a regression test"
+        #expect(store.title == "Fix the flaky test in the auth suite", "only the first line")
+    }
+
+    @Test("and stops writing itself the moment someone edits it")
+    func titleYieldsToEdits() async {
+        let (store, _) = await store()
+
+        store.brief = "Fix the flaky test"
+        #expect(store.title == "Fix the flaky test")
+
+        store.title = "Flaky auth test"
+        store.brief = "Fix the flaky test\nSomething else entirely"
+        #expect(store.title == "Flaky auth test", "an edited title is the person's, not ours")
+    }
+
+    @Test("a derived title drops markdown markers and cuts at a word")
+    func derivedTitle() {
+        #expect(NewTaskStore.derivedTitle(from: "## Fix the flaky test") == "Fix the flaky test")
+        #expect(NewTaskStore.derivedTitle(from: "- Fix the flaky test") == "Fix the flaky test")
+        #expect(NewTaskStore.derivedTitle(from: "\n\n  Fix it  \n") == "Fix it")
+        #expect(NewTaskStore.derivedTitle(from: "") == "")
+
+        let long = NewTaskStore.derivedTitle(
+            from: "Fix the flaky test in the auth suite before the release on Friday"
+        )
+        #expect(long.hasSuffix("…"), "a long title is marked as cut")
+        #expect(long.count <= 61)
+        #expect(!long.contains("  "), "and cut at a space rather than mid-word")
+    }
+
+    @Test("a chat needs an agent and a sentence, and no workflow at all")
+    func askingNeedsNoWorkflow() async {
+        let (store, _) = await store()
+        #expect(store.canAsk == false, "nothing has been said yet")
+
+        store.brief = "What does the retry policy do?"
+        #expect(store.canAsk, "a sentence and an agent are enough")
+
+        store.workflowID = nil
+        #expect(store.canAsk, "and a chat is not filed, so it needs no workflow")
+        #expect(store.canFile == false, "while filing one still does")
+    }
+
+    @Test("the agent is chosen for you rather than asked about")
+    func agentIsPreselected() async {
+        let (store, _) = await store()
+        #expect(store.agentProfileID == "p1")
+    }
+
+    @Test("asking starts the kind of chat that was asked for")
+    func startsTheRightChat() async {
+        let (store, chats) = await store()
+        store.brief = "What does the retry policy do?"
+
+        let chat = await store.startChat(kind: .quick)
+
+        #expect(chat?.taskID == "chat-task")
+        #expect(store.startedChat?.sessionID == "chat-session")
+        let request = await chats.lastRequest()
+        #expect(request?.kind == .quick)
+        #expect(request?.workspaceID == "w1")
+        #expect(request?.agentProfileID == "p1")
+        #expect(request?.repositories.isEmpty == true, "the workspace's own repositories are the default")
+    }
+
+    @Test("a chat is named after the sentence, and the setup chat after its job")
+    func chatTitles() async {
+        let (store, chats) = await store()
+        store.brief = "## What does the retry policy do?\nMore detail"
+
+        _ = await store.startChat(kind: .quick)
+        var request = await chats.lastRequest()
+        #expect(request?.title == "What does the retry policy do?")
+
+        _ = await store.startChat(kind: .config)
+        request = await chats.lastRequest()
+        #expect(request?.title == "Change the setup")
+    }
+
+    @Test("a chat cannot be started with nothing to say")
+    func noSentenceNoChat() async {
+        let (store, chats) = await store()
+
+        let chat = await store.startChat(kind: .quick)
+
+        #expect(chat == nil)
+        #expect(await chats.requests.isEmpty, "and the server is never asked")
+        #expect(store.phase == .editing, "a refusal is not a failure")
+    }
+
+    @Test("a chat that fails says why, and can be tried again")
+    func failedChat() async {
+        let (store, chats) = await store()
+        store.brief = "What does the retry policy do?"
+        await chats.failNext(with: KandevError.malformedFrame("nope"))
+
+        #expect(await store.startChat(kind: .quick) == nil)
+        guard case .failed(let message) = store.phase else {
+            Issue.record("expected a failure, got \(store.phase)")
+            return
+        }
+        #expect(!message.isEmpty)
+        #expect(store.canAsk, "the sentence is still there to try again with")
+    }
+
+    @Test("no agent profiles is a state the screen can offer help in")
+    func noProfiles() async {
+        let source = FakeTaskSource()
+        await source.setWorkspaces([
+            KandevWorkspace(id: "w1", name: "Default Workspace", scopes: []),
+        ])
+        let profiles = StubSessionStarter()
+        await profiles.setProfiles([])
+        let store = NewTaskStore(
+            taskSource: source,
+            creator: StubTaskCreator(),
+            profileSource: profiles,
+            chatStarter: StubChatStarter(),
+            workspaceID: "w1"
+        )
+
+        await store.loadOptions()
+
+        #expect(store.needsAgentProfile, "which is what the setup chat is for")
+        store.brief = "Do something"
+        #expect(store.canAsk == false, "and neither door can open")
     }
 }

@@ -3,3 +3,6 @@
 # local.mk is gitignored, which is the point: the address of a private
 # server belongs on the machine that can reach it, not in a public repo.
 KANDEV ?= http://your-server:38429
+# Only if the server has authentication on. A personal access token, sent as a
+# bearer token on HTTP and as `?token=` on the WebSocket upgrade.
+KANDEV_TOKEN ?=

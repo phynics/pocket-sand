@@ -69,7 +69,14 @@ public actor WebSocketTransport: KandevTransport {
             baseURL: configuration.baseURL,
             token: configuration.token
         )
-        let task = session.webSocketTask(with: url)
+        var request = URLRequest(url: url)
+        // Sent because `URLSession` is not a browser and sends none, while the
+        // server's origin gate requires one whenever authentication is on. See
+        // `KandevEndpoint.webSocketOrigin`.
+        if let origin = KandevEndpoint.webSocketOrigin(baseURL: configuration.baseURL) {
+            request.setValue(origin, forHTTPHeaderField: "Origin")
+        }
+        let task = session.webSocketTask(with: request)
         task.resume()
         socket = task
         pump = Task { [weak self] in

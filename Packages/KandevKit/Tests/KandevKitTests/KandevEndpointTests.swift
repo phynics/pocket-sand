@@ -48,3 +48,33 @@ struct KandevEndpointTests {
         }
     }
 }
+
+/// The `Origin` header, which is not a detail: a server with authentication on
+/// refuses the WebSocket upgrade without one, and says nothing about why.
+@Suite("WebSocket origin")
+struct WebSocketOriginTests {
+    private func origin(_ string: String) -> String? {
+        KandevEndpoint.webSocketOrigin(baseURL: URL(string: string)!)
+    }
+
+    @Test("a secure server gets a secure origin, and an insecure one does not")
+    func scheme() {
+        #expect(origin("https://kandev.example.com") == "https://kandev.example.com")
+        #expect(origin("http://kandev.local:38429") == "http://kandev.local:38429")
+        // `wss` is a socket scheme, not a web one: the origin it stands for is https.
+        #expect(origin("wss://kandev.example.com") == "https://kandev.example.com")
+    }
+
+    @Test("a port is kept only when it is not the default for the scheme")
+    func ports() {
+        #expect(origin("https://kandev.example.com:443") == "https://kandev.example.com")
+        #expect(origin("http://kandev.example.com:80") == "http://kandev.example.com")
+        #expect(origin("http://kandev.example.com:38429") == "http://kandev.example.com:38429")
+    }
+
+    @Test("a host is required, and a path is not part of an origin")
+    func hostOnly() {
+        #expect(origin("https://kandev.example.com/some/path") == "https://kandev.example.com")
+        #expect(origin("file:///tmp/thing") == nil)
+    }
+}

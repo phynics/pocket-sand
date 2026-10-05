@@ -62,11 +62,18 @@ public final class TaskConversationStore {
         steps: [String: KandevWorkflowStep] = [:],
         permissions: ConversationPermissions = .default,
         conversationServer: (any KandevLiveConversations)? = nil,
-        sessionStarter: (any KandevSessionStarting)? = nil
+        sessionStarter: (any KandevSessionStarting)? = nil,
+        initialDraft: String = ""
     ) {
+        let composer = ComposerStore(source: promptSource)
+        // A chat arrives here with the sentence that started it, the way the
+        // first-party client pre-fills a chat's input: a prompt cannot be addressed
+        // until the session record has been read, so the words wait in the field
+        // rather than being sent into a session that does not exist yet.
+        composer.draft = initialDraft
         self.init(
             transcript: TranscriptStore(source: transcriptSource, stepNames: steps.mapValues(\.name)),
-            composer: ComposerStore(source: promptSource),
+            composer: composer,
             permissions: permissions,
             conversationServer: conversationServer,
             sessionStarter: sessionStarter

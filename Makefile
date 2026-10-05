@@ -16,16 +16,16 @@ test:
 # `LiveServerTests`, and a pattern like "Live server" silently matches nothing,
 # which looks exactly like a passing run.
 test-live:
-	KANDEV_LIVE=$(KANDEV) swift test --package-path Packages/KandevKit --filter LiveServerTests
+	KANDEV_LIVE=$(KANDEV) KANDEV_TOKEN=$(KANDEV_TOKEN) swift test --package-path Packages/KandevKit --filter LiveServerTests
 
 # Starts an agent, so it needs a scratch task that already has a session running.
 # The environment is set on each command. On a single line it would reach only the
 # first, and the second suite would be skipped while reporting no failures; as a
 # target-level export it did not reach either, and the suite crashed instead.
 test-live-write:
-	KANDEV_LIVE=$(KANDEV) KANDEV_LIVE_WRITE=$(TASK) KANDEV_LIVE_PROFILE=$(PROFILE) \
+	KANDEV_LIVE=$(KANDEV) KANDEV_TOKEN=$(KANDEV_TOKEN) KANDEV_LIVE_WRITE=$(TASK) KANDEV_LIVE_PROFILE=$(PROFILE) \
 		swift test --package-path Packages/KandevKit --filter LiveComposerTests
-	KANDEV_LIVE=$(KANDEV) KANDEV_LIVE_WRITE=$(TASK) KANDEV_LIVE_PROFILE=$(PROFILE) \
+	KANDEV_LIVE=$(KANDEV) KANDEV_TOKEN=$(KANDEV_TOKEN) KANDEV_LIVE_WRITE=$(TASK) KANDEV_LIVE_PROFILE=$(PROFILE) \
 		swift test --package-path Packages/KandevKit --filter LiveFollowTests
 
 # Your own server, kept out of the repository: copy local.mk.example to local.mk

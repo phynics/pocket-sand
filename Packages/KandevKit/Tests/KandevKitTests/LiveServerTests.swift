@@ -15,7 +15,10 @@ import Testing
 )
 struct LiveServerTests {
     private var client: KandevClient {
-        KandevClient(baseURL: URL(string: ProcessInfo.processInfo.environment["KANDEV_LIVE"]!)!)
+        KandevClient(
+            baseURL: URL(string: ProcessInfo.processInfo.environment["KANDEV_LIVE"]!)!,
+            token: ProcessInfo.processInfo.environment["KANDEV_TOKEN"]
+        )
     }
 
     @Test("reads workspaces, then a flat task list with real payloads")

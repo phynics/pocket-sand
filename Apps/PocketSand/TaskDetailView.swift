@@ -31,7 +31,8 @@ struct TaskDetailView: View {
         taskID: String,
         source: any KandevConversationServer,
         catalogue: WorkflowCatalogue,
-        permissions: ConversationPermissions = .default
+        permissions: ConversationPermissions = .default,
+        initialDraft: String = ""
     ) {
         self.taskID = taskID
         self.catalogue = catalogue
@@ -42,7 +43,8 @@ struct TaskDetailView: View {
                 steps: catalogue.stepsByID,
                 permissions: permissions,
                 conversationServer: source,
-                sessionStarter: source
+                sessionStarter: source,
+                initialDraft: initialDraft
             )
         )
         _move = State(initialValue: TaskMoveStore(mover: source))

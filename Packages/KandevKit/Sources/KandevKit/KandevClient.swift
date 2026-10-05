@@ -106,6 +106,32 @@ public struct KandevClient: Sendable {
         )
     }
 
+    /// Starts a chat, which the server answers with the task and the session it
+    /// made.
+    ///
+    /// Two requests for one object, because the server has two routes for it: a
+    /// chat is created with a session already attached, unlike a task, which is
+    /// created empty and launched later. The repositories are left off rather than
+    /// sent empty, so the workspace's own are used.
+    public func startChat(
+        kind: KandevChatKind,
+        workspaceID: String,
+        agentProfileID: String,
+        title: String?,
+        repositories: [String]
+    ) async throws -> KandevChat {
+        var members: [String: JSONValue] = ["agent_profile_id": .string(agentProfileID)]
+        if let title, !title.isEmpty { members["title"] = .string(title) }
+        if !repositories.isEmpty {
+            members["repositories"] = .array(repositories.map { .string($0) })
+        }
+        return try await http.post(
+            kind.route(workspaceID),
+            body: .object(members),
+            as: KandevChat.self
+        )
+    }
+
     public func sessions(taskID: String) async throws -> [KandevSession] {
         try await http.get(
             KandevHTTPRoute.taskSessions(taskID: taskID),

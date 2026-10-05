@@ -241,6 +241,91 @@ tests were deleted without the `LazyVStack` coming back. A run can be eighty ste
 each with a glyph, a hairline and sometimes glass, and the transcript changes on every
 message an agent emits — so every row was being rebuilt on every frame of a live turn.
 
+## Creating something
+
+A task, a quick chat and a configuration chat are **one object on the server**. A
+chat is created with a session already attached and a task behind it; what makes
+it a chat is that it is not filed. So the screen that creates one is not a form
+with modes, and the story it tells is this:
+
+> Everything starts as a sentence. Two doors keep it; the third fixes what is in
+> the way.
+
+**The sentence comes first**, because the server makes it the agent's first
+message, word for word — creating a task and starting a conversation are the same
+act, and a form that asks for a title before it asks what you want done has the
+order backwards. The title writes itself from the sentence's first line until
+someone edits it, and then it stops.
+
+**What is left is not a form.** It is two statements about what will happen, each
+one tap from being changed:
+
+```
+   ✕                                            Create
+   What needs doing?
+   ┌────────────────────────────────────────────┐
+   │ Fix the flaky test in the auth suite       │   serif, title3
+   └────────────────────────────────────────────┘
+   ┌────────────────────────────────────────────┐
+   │ Fix the flaky test in the auth suite       │   the title, written for you
+   └────────────────────────────────────────────┘
+   ──────────────────────────────────────────────
+   Filed in   Development · Backlog           ⌄   sans: the app's promise
+   Agent      Claude Code                     ⌄
+   ──────────────────────────────────────────────
+   Just ask instead                               the other door
+```
+
+Filing is **one decision, not two**, so it is one row opening one menu of
+workflows and their steps — not four pickers. Both rows show an answer rather
+than asking a question, and both answers were chosen before anyone arrived.
+
+**The type says which lines are yours.** The sentence is New York, the largest
+thing on the screen, because it is the only thing that is yours. The two rows are
+SF Pro in the app's own voice, labels muted and answers in ink. That is the same
+grammar as the transcript — serif is a person, sans is the agent and the chrome —
+so the screen needs no legend.
+
+### What was rejected
+
+- **A segmented control for the doors.** It is a filled container, which this app
+  does not use, and it would make *which door* the first thing you see — a wizard,
+  asking before you know what you want.
+- **A chevron (`›`) on the rows.** That is the navigation vocabulary the task rows
+  deliberately dropped. The glyph here is the platform's own
+  `chevron.up.chevron.down`, which is what a menu picker shows: "this opens a
+  choice", not "this goes somewhere".
+- **Asking for a repository or an executor.** The create route takes repositories,
+  but the workspace has its own, and on a phone a repo picker is a heavy, rare
+  choice. An executor is not in the create contract at all — the server derives it
+  — and asking for something the server decides is a lie.
+- **A separate chat screen.** A chat is a task with a session, so "Just ask"
+  creates one and opens the transcript the app already has. The payoff is that
+  nothing is thrown away: filing a chat later adds a workflow to a task that
+  already exists.
+- **The helper text under the brief.** It explained that the brief becomes the
+  first message, which the screen now *is*. It shows only while the field is
+  empty, and then gets out of the way.
+
+### When nothing is set up
+
+The screen's third door is the one that matters most, and it is not a door for
+starting work. With no agent profile, neither of the others can open — and a
+disabled button beside the words "no agent profiles" is a screen someone cannot
+get out of. So the create screen offers the **setup chat** where the need actually
+arises, rather than in a settings screen nobody has found:
+
+```
+   No agent is set up
+   Change the setup                       Setup chat
+   Nothing can start until there is one. The setup chat can make one — it
+   changes Kandev's own settings, not this task's.
+```
+
+That is the cohesion the whole design turns on: the configuration chat is not a
+fourth mode of creation, it is **the agent that edits the app, reached from the
+thing that is in the way**.
+
 ## Deliberately not done
 
 - **No `ContentUnavailableView`.** Empty states are `EmptyNote`, set in the app's

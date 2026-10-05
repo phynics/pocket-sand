@@ -21,6 +21,11 @@ struct TaskListView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var isCreatingTask = false
     @State private var newTask: NewTaskStore?
+    /// The task the create screen just made, and the words to carry into it. A chat
+    /// starts a conversation, so its sentence goes on to the composer; a filed task
+    /// does not need it, because the server already has the brief.
+    @State private var openedTaskID: String?
+    @State private var openedSentence = ""
     @State private var removal: TaskRemovalStore
 
     private var store: TaskListStore { session.taskList }
@@ -57,7 +62,8 @@ struct TaskListView: View {
                         taskID: taskID,
                         source: session.client,
                         catalogue: session.catalogue,
-                        permissions: store.workspace?.conversationPermissions ?? .default
+                        permissions: store.workspace?.conversationPermissions ?? .default,
+                        initialDraft: taskID == openedTaskID ? openedSentence : ""
                     )
                 }
                 .refreshable { await store.refresh() }
@@ -109,16 +115,31 @@ struct TaskListView: View {
                 }
                 .sheet(isPresented: $isCreatingTask) {
                     if let newTask {
-                        NewTaskView(store: newTask) { task in
+                        NewTaskView(store: newTask) { opened in
                             isCreatingTask = false
+                            openedTaskID = opened.taskID
+                            openedSentence = opened.sentence
                             // Straight to what was just created: refetching the
                             // list to find it would be slower and could miss it.
-                            path = [task.id]
+                            path = [opened.taskID]
                             Task { await store.refresh() }
                         }
                     }
                 }
         }
+    }
+
+    /// Opens the create screen, with the workspace the list is already showing.
+    private func openCreateSheet() {
+        newTask = NewTaskStore(
+            taskSource: session.client,
+            creator: session.client,
+            profileSource: session.client,
+            chatStarter: session.client,
+            catalogue: session.catalogue,
+            workspaceID: store.workspace?.id
+        )
+        isCreatingTask = true
     }
 
     private var title: String {
@@ -296,14 +317,7 @@ struct TaskListView: View {
     /// reads as stray punctuation.
     private var newTaskButton: some View {
         Button {
-            newTask = NewTaskStore(
-                taskSource: session.client,
-                creator: session.client,
-                profileSource: session.client,
-                catalogue: session.catalogue,
-                workspaceID: store.workspace?.id
-            )
-            isCreatingTask = true
+            openCreateSheet()
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 20, weight: .medium))

@@ -188,6 +188,16 @@ knowing before you trust a clean `git status`:
 
 ## Known gaps
 
+- **A socket will not open to a server that negotiates HTTP/2.** Verified against a
+  deployment behind an h2 proxy: the upgrade is refused, and
+  `URLSessionWebSocketTask` reports it as a closed connection with nothing said
+  about why, while the same URL answers `101 Switching Protocols` over HTTP/1.1.
+  The HTTP half of the client works there — the token, the reads — so a server in
+  that shape looks connected until something needs the stream.
+- The socket also needs an `Origin` header, which the server's origin gate compares
+  against `Host` and which `URLSession` does not send, being not a browser. This
+  client sends it (`KandevEndpoint.webSocketOrigin`); without it the upgrade is
+  refused on any server with authentication on.
 - No entitlements yet, so the macOS app is unsigned and unsandboxed. Adding the
   sandbox requires `com.apple.security.network.client`, or the app cannot reach
   any server at all.

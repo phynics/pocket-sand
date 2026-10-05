@@ -28,7 +28,10 @@ struct LiveComposerTests {
     /// failed test, not a crash that takes the whole run down with it.
     private var client: KandevClient {
         let raw = ProcessInfo.processInfo.environment["KANDEV_LIVE"] ?? "http://127.0.0.1:1"
-        return KandevClient(baseURL: URL(string: raw) ?? URL(string: "http://127.0.0.1:1")!)
+        return KandevClient(
+            baseURL: URL(string: raw) ?? URL(string: "http://127.0.0.1:1")!,
+            token: ProcessInfo.processInfo.environment["KANDEV_TOKEN"]
+        )
     }
 
     private var taskID: String {

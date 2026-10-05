@@ -26,7 +26,8 @@ struct LiveFollowTests {
     @Test("an agent reply arrives on the live stream, not from a refetch")
     func followsTheLatestMessage() async throws {
         let client = KandevClient(
-            baseURL: URL(string: ProcessInfo.processInfo.environment["KANDEV_LIVE"] ?? "http://127.0.0.1:1")!
+            baseURL: URL(string: ProcessInfo.processInfo.environment["KANDEV_LIVE"] ?? "http://127.0.0.1:1")!,
+            token: ProcessInfo.processInfo.environment["KANDEV_TOKEN"]
         )
         try await client.connect()
 
