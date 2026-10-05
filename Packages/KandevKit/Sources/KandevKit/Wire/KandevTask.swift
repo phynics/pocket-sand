@@ -39,6 +39,13 @@ public struct KandevTask: Sendable, Codable, Equatable, Identifiable {
     public var statusSummary: KandevStatusSummary?
     public var createdAt: KandevTimestamp?
     public var updatedAt: KandevTimestamp?
+    /// When the task was archived, and nil while it is on the board.
+    ///
+    /// The list asks the server for one set or the other, and reads this too: the
+    /// archive toggle is a promise about what is on screen, and the client can keep
+    /// that promise itself rather than trusting a query parameter nobody here has
+    /// verified.
+    public var archivedAt: KandevTimestamp?
 
     /// The session a task treats as its default target.
     public var primarySessionID: String?
@@ -70,6 +77,7 @@ public struct KandevTask: Sendable, Codable, Equatable, Identifiable {
         case statusSummary = "status_summary"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case archivedAt = "archived_at"
         case primarySessionID = "primary_session_id"
         case primarySessionState = "primary_session_state"
         case taskPendingAction = "task_pending_action"
@@ -104,6 +112,7 @@ public struct KandevTask: Sendable, Codable, Equatable, Identifiable {
         statusSummary: KandevStatusSummary? = nil,
         createdAt: KandevTimestamp? = nil,
         updatedAt: KandevTimestamp? = nil,
+        archivedAt: KandevTimestamp? = nil,
         primarySessionID: String? = nil,
         primarySessionState: String? = nil,
         taskPendingAction: String? = nil,
@@ -134,6 +143,7 @@ public struct KandevTask: Sendable, Codable, Equatable, Identifiable {
         self.statusSummary = statusSummary
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.archivedAt = archivedAt
         self.primarySessionID = primarySessionID
         self.primarySessionState = primarySessionState
         self.taskPendingAction = taskPendingAction

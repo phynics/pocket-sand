@@ -377,9 +377,20 @@ public final class TaskListStore {
     public private(set) var repositoryNames: [String: String] = [:]
 
     private func rebuildRows() {
-        let built = tasks.map { TaskRow(task: $0, steps: catalogue.stepsByID) }
+        let visible = tasks.filter(matchesTheToggle(_:))
+        let built = visible.map { TaskRow(task: $0, steps: catalogue.stepsByID) }
         rows = Self.nested(built)
         unresolvedStepCount = rows.count { $0.stepName == nil }
+    }
+
+    /// Whether a task belongs in the set the toggle is showing.
+    ///
+    /// The archive flags go to the server as well, and this does not replace them. It
+    /// is the client keeping the same promise the button makes: a page that came back
+    /// by either route is drawn the way the toggle says, which is the difference
+    /// between an archive and a second copy of the board.
+    private func matchesTheToggle(_ task: KandevTask) -> Bool {
+        showingArchived ? task.archivedAt != nil : task.archivedAt == nil
     }
 
     /// Tasks in server order, each followed by its subtasks.

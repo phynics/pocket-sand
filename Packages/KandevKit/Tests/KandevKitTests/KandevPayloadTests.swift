@@ -68,6 +68,19 @@ struct KandevPayloadTests {
         #expect(task.lastActivity == nil)
     }
 
+    /// The archive marker, so the list can tell the board from the archive itself.
+    @Test("reads when a task was archived")
+    func readsArchivedAt() throws {
+        let onBoard = try decode(KandevTask.self, #"{"id":"t","title":"T","archived_at":null}"#)
+        let archived = try decode(
+            KandevTask.self,
+            #"{"id":"t","title":"T","archived_at":"2026-10-05T00:00:00Z"}"#
+        )
+
+        #expect(onBoard.archivedAt == nil)
+        #expect(archived.archivedAt?.date != nil)
+    }
+
     @Test("accepts labels as a real array too, because both shapes occur")
     func acceptsLabelArray() throws {
         let task = try decode(KandevTask.self, #"{"id":"t","title":"T","labels":["urgent","docs"]}"#)

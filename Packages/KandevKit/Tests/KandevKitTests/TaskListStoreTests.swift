@@ -87,7 +87,8 @@ func makeTask(
     stepID: String?,
     state: String = "IN_PROGRESS",
     sessionState: String? = "WAITING_FOR_INPUT",
-    activity: String? = "2026-10-04T18:07:04.074817797Z"
+    activity: String? = "2026-10-04T18:07:04.074817797Z",
+    archived: Bool = false
 ) -> KandevTask {
     KandevTask(
         id: id,
@@ -97,6 +98,7 @@ func makeTask(
         statusSummary: activity.map {
             KandevStatusSummary(lastActivityAt: KandevTimestamp(raw: $0))
         },
+        archivedAt: archived ? KandevTimestamp(raw: "2026-10-05T00:00:00Z") : nil,
         primarySessionState: sessionState
     )
 }
@@ -542,12 +544,35 @@ struct TaskListSessionStateTests {
         await store.refresh()
         #expect(store.showingArchived == false)
 
-        await source.setTasks([makeTask(id: "t9", title: "In the archive", stepID: nil)])
+        await source.setTasks([makeTask(id: "t9", title: "In the archive", stepID: nil, archived: true)])
         await store.setShowingArchived(true)
 
         #expect(store.showingArchived)
         #expect(store.rows.map(\.title) == ["In the archive"])
         #expect(store.query.archived == .onlyArchived)
+    }
+
+    /// The archive is a different set, whatever the server decides to return. A page
+    /// that carried the board into the archive is drawn as the archive anyway — which is
+    /// what the toggle promises, and the client is the one that can keep it.
+    @Test("the board and the archive are sets, not a flag on the same list")
+    func archiveIsASet() async {
+        let source = FakeTaskSource()
+        await source.setWorkspaces([workspace])
+        await source.setWorkflows([KandevWorkflow(id: "wf1", name: "Development")])
+        // One page holding both, which is the state this guards: the archive is drawn
+        // from the archived rows in it, not from the page as it arrived.
+        await source.setTasks([
+            makeTask(id: "t1", title: "On the board", stepID: nil),
+            makeTask(id: "t2", title: "Archived", stepID: nil, archived: true),
+        ])
+        let store = TaskListStore(source: source)
+
+        await store.refresh()
+        #expect(store.rows.map(\.id) == ["t1"], "an archived task must not sit on the board")
+
+        await store.setShowingArchived(true)
+        #expect(store.rows.map(\.id) == ["t2"], "the archive is the archived set, not the board again")
     }
 }
 

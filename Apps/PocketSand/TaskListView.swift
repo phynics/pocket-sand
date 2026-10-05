@@ -211,26 +211,38 @@ struct TaskListView: View {
             .listRowBackground(Color.clear)
             .listRowSeparatorTint(Theme.rule)
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                if store.showingArchived {
-                    // No confirmation: putting something back is not
-                    // destructive, and asking would be ceremony.
-                    Button("Unarchive", systemImage: "arrow.up.bin") {
-                        Task {
-                            guard await removal.unarchive(taskID: row.id) else { return }
-                            withAnimation { store.removeRow(taskID: row.id) }
-                        }
-                    }
-                    .tint(.indigo)
-                } else {
-                    Button("Archive", systemImage: "archivebox") {
-                        removal.ask(.archive, taskID: row.id, title: row.title)
-                    }
-                    .tint(.indigo)
+                rowActions(row)
+            }
+            // The same actions under a press. A swipe is a gesture nobody is told about;
+            // a menu is where a long press looks for one, on both platforms. One
+            // definition, because a second list of archive-and-delete is how the two
+            // drift apart.
+            .contextMenu {
+                rowActions(row)
+            }
+        }
+    }
 
-                    Button("Delete", systemImage: "trash", role: .destructive) {
-                        removal.ask(.delete, taskID: row.id, title: row.title)
-                    }
+    /// What can be done to a row, wherever it is asked for.
+    @ViewBuilder private func rowActions(_ row: TaskRow) -> some View {
+        if store.showingArchived {
+            // No confirmation: putting something back is not
+            // destructive, and asking would be ceremony.
+            Button("Unarchive", systemImage: "arrow.up.bin") {
+                Task {
+                    guard await removal.unarchive(taskID: row.id) else { return }
+                    withAnimation { store.removeRow(taskID: row.id) }
                 }
+            }
+            .tint(.indigo)
+        } else {
+            Button("Archive", systemImage: "archivebox") {
+                removal.ask(.archive, taskID: row.id, title: row.title)
+            }
+            .tint(.indigo)
+
+            Button("Delete", systemImage: "trash", role: .destructive) {
+                removal.ask(.delete, taskID: row.id, title: row.title)
             }
         }
     }
