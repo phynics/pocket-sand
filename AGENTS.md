@@ -191,6 +191,23 @@ The pieces, and each one is load-bearing:
   file name carries the anchor so two views of one screen do not overwrite each other.
   Adding an anchor for a new region is part of photographing it.
 
+### Checking what a screen says
+
+`make visual-check` captures, then **reads the screenshots** with Vision and checks
+what they say: that each screen's text is present and whole, that nothing ends in an
+ellipsis (text cut to fit), and that no line ends in a hyphen (a word broken in half).
+Two of those rules need no per-screen expectations, and they are the ones that found
+real defects — including one at the *default* text size that nobody had noticed.
+
+Expectations live in `scripts/visual-expectations.json`, keyed by capture:
+`newtask`, or `newtask@accessibility-extra-extra-large` for a size where less is on
+screen. An anchored capture deliberately has no entry, so a region gets the whole-screen
+rules only. Deliberate ellipses are listed under `_expectedTruncation`; the connect
+screen's `kandev_pat_…` placeholder is the reason that list exists.
+
+It is not pixel diffing, and the reason is in ADR-0004: a font update moving every pixel
+is not a regression, and an ellipsis that was not there yesterday is.
+
 What it reaches: appearance (`simctl ui appearance`), text size (`content_size`,
 including the accessibility sizes), and every screen the tour knows by name. What it
 does **not** reach: anything that needs a tap — open menus, a half-typed field, a

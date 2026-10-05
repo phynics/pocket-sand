@@ -76,7 +76,7 @@ struct NewTaskView: View {
             switch self {
             case .task: "Fix the flaky test in the auth suite"
             case .chat: "How does the retry policy work?"
-            case .setup: "Add a review step to the Development workflow"
+            case .setup: "Add a review step"
             }
         }
 

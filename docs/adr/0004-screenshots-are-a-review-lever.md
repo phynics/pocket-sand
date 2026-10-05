@@ -53,6 +53,37 @@ Visual validation is a **script plus a debug-only screen override**, not a test.
 - **Keep patching a view by hand.** Rejected: it is the ritual this replaces, and its
   failure mode is shipping a hardcoded id.
 
+## Update: the screens are read, not diffed
+
+`scripts/visual-check` turns the captures into a check, and it does it by **reading the
+text on them** with Vision rather than comparing pixels. Three rules, and the first two
+need no expectations to be written:
+
+- **Nothing was cut to fit.** An ellipsis on a line means a word did not fit. A few are
+  deliberate and are named in `scripts/visual-expectations.json` under
+  `_expectedTruncation` — the connect screen's `kandev_pat_…` placeholder is one.
+- **No word was broken in half.** A line ending in a hyphen is the layout admitting it
+  had nowhere to put the word: "Set-" above "up".
+- **The screen says what it is supposed to say**, per key. Expectations are keyed by
+  *capture* rather than by screen — `newtask@accessibility-extra-extra-large` — because
+  what is on screen at the largest text size is not what is on screen at the default
+  one, and an anchored capture has no entry at all: a region gets the two whole-screen
+  rules and nothing else, since it is for looking at rather than for asserting against.
+
+This is better than diffing images for the reason the alternative was deferred: a system
+font update or a different simulator runtime moves every pixel and means nothing, while
+an ellipsis that was not there yesterday means something. It is also what makes the
+check worth having on a screen nobody has looked at.
+
+It caught four of the five defects that prompted it, and one nobody had noticed: the
+setup screen's example placeholder was longer than its field, at the *default* text size.
+
+**What it does not do.** It only sees what is on screen, so a defect below the fold is
+invisible to it unless the run scrolls there with `SCROLL`. It needs a server for any
+screen with data, which keeps it off CI until fixtures exist — the same alternative
+deferred above, now with a concrete reason to build it. And it is a set of heuristics:
+"a line ending in a hyphen" is a good proxy for a broken word, not a proof of one.
+
 ## Consequences
 
 - Debug-only code lives in the app: a screen override, and a readiness call in each

@@ -40,9 +40,14 @@ probe:
 probe-v1:
 	swift run --package-path Packages/KandevKit kandev-probe $(KANDEV) < Packages/KandevKit/Probe/discovery.json
 
-.PHONY: gen build-ios build-macos test test-live test-live-write probe probe-v1 screenshots
+.PHONY: gen build-ios build-macos test test-live test-live-write probe probe-v1 screenshots visual-check
 
 # Photograph the screens, for reviewing appearance by looking at it. Not a test:
 # see ADR-0003 and docs/design.md. Output lands in artifacts/ (gitignored).
 screenshots:
 	./scripts/screenshots $(SCREENS)
+
+# Reads the screenshots back and checks what they say. Not pixel diffing: text cut to
+# fit, a word broken in half, a label that is missing.
+visual-check:
+	./scripts/visual-check

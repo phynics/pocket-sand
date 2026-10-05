@@ -1,0 +1,11 @@
+{
+  "newtask": ["Cancel", "Create", "Task", "Chat", "Setup", "What needs doing?", "Where it goes", "Filed in", "Agent", "Repository"],
+  "newtask@accessibility-extra-extra-large": ["Cancel", "Create", "Task", "Chat", "Setup", "What needs doing?"],
+  "newtask@accessibility-medium": ["What needs doing?", "Where it goes", "Filed in", "Agent", "Repository"],
+  "chat": ["What do you want to ask?", "Agent", "Repository"],
+  "setup": ["What should change?", "Agent"],
+  "detail": ["Task"],
+  "list": [],
+
+  "_expectedTruncation": ["kandev_pat_…"]
+}

@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+#
+# Check what the screens say, not what they look like pixel by pixel.
+#
+#   ./scripts/visual-check                 # every screen, both appearances, default size
+#   SIZES="large accessibility-extra-extra-large" ./scripts/visual-check
+#
+# A regression test for the defects the tests cannot reach: text cut to fit, a word
+# broken across two lines, a label that is not there at all. Those are properties of a
+# rendered screen, and the model layer cannot see them — which is why every one of them
+# was found by looking at a screenshot rather than by a test.
+#
+# It works by reading the screenshots with Vision and asserting on the reading, rather
+# than diffing pixels: a font update or a different runtime moving every pixel is not a
+# regression, and an ellipsis that was not there yesterday is.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+OUT="${OUT:-artifacts/visual-check}"
+
+# Capture first, with the harness that already knows how to drive the app. Its failures
+# are reported at the end rather than stopping the run: a server that is down is worth
+# knowing about, and so is whatever the reading finds in what was captured anyway.
+capture_failed=0
+OUT="$OUT" ./scripts/screenshots || capture_failed=1
+
+echo
+step() { printf '\033[1m%s\033[0m\n' "$1"; }
+step "Reading the screenshots"
+
+failures=0
+for file in "$OUT"/*.png; do
+    [ -e "$file" ] || continue
+    name="$(basename "$file" .png)"
+    # `screen-appearance-size[-anchor]`. The key keeps the size when it is not the
+    # default, because what is on screen at the largest size is not what is on screen at
+    # the default one, and an anchor moves what is on screen entirely.
+    screen="${name%%-*}"
+    rest="${name#*-}"
+    appearance="${rest%%-*}"
+    size="${rest#*-}"
+    anchor=""
+    case "$size" in
+        *-*) anchor="${size#*-}"; size="${size%%-*}" ;;
+    esac
+    key="$screen"
+    [ "$size" = "large" ] || key="$screen@$size"
+    # An anchored capture shows a region rather than a screen, so it has no entry and
+    # gets the whole-screen rules only: nothing may be truncated, nothing broken. A
+    # region is for looking at, not for asserting content against.
+    [ -n "$anchor" ] && key="$key+$anchor"
+
+    if ! swift scripts/visual-assert.swift "$file" scripts/visual-expectations.json "$key"; then
+        failures=$((failures + 1))
+    fi
+done
+
+echo
+if [ "$failures" -gt 0 ] || [ "$capture_failed" != "0" ]; then
+    [ "$failures" -gt 0 ] && step "$failures capture(s) did not read cleanly"
+    [ "$capture_failed" != "0" ] && step "the capture itself reported problems (a server that is not reachable does that)"
+    exit 1
+fi
+step "All screens read cleanly"
