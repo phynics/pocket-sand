@@ -432,6 +432,30 @@ struct RunSummaryTests {
         #expect(items[0].stepsSummaryLabel == "Ran 3 commands")
     }
 
+    /// A tap opens a finished loop where it stands, and its line stays under the rows as
+    /// the control that closes it again.
+    @Test("an open run shows its rows and keeps its line")
+    func openRunShowsItsRows() {
+        let closed = turn(machineRows(6)).items(condensing: false)
+        #expect(closed.count == 1, "a finished loop of more than one is its line")
+        #expect(closed[0].isStepsSummary)
+
+        let open = turn(machineRows(6)).items(condensing: false, expanded: ["steps:m0"])
+        #expect(open.map(\.id) == ["m0", "m1", "m2", "m3", "m4", "m5", "steps:m0"])
+        #expect(open.last?.isStepsSummary == true, "the line is still the way to close it")
+    }
+
+    /// Opening the run being written shows the whole of it rather than the tail.
+    @Test("an open live run shows every row")
+    func openLiveRunShowsEveryRow() {
+        let items = turn(machineRows(20))
+            .items(condensing: false, generating: true, expanded: ["steps:m0"])
+
+        #expect(items.count == 21, "all twenty rows and the line under them")
+        #expect(items.first?.id == "m0")
+        #expect(items.last?.isStepsSummary == true)
+    }
+
     /// A folded repeat still knows the rows it covers, so the sheet can say how long the
     /// loop took rather than only when it started.
     @Test("a folded repeat keeps the rows behind it")

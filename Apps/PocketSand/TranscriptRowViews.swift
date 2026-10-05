@@ -100,7 +100,7 @@ struct TranscriptTurnView: View {
     }
 
     @ViewBuilder private func content(now: Date) -> some View {
-        let items = turn.items(condensing: isCondensed, generating: isWorking, now: now)
+        let items = turn.items(condensing: isCondensed, generating: isWorking, expanded: expandedRows, now: now)
 
         VStack(alignment: .leading, spacing: Theme.Space.base) {
             ForEach(itemGroups(items)) { group in
@@ -139,55 +139,69 @@ struct TranscriptTurnView: View {
     }
 
     /// One item, drawn by what it is.
+    ///
+    /// A row opens and closes itself: the work an agent did is a log to scan, and a tap
+    /// that folds a line back into the one below it is cheaper than a sheet. The sheet is
+    /// still where the whole exchange lives, one press away.
     @ViewBuilder private func itemView(_ item: TranscriptItem) -> some View {
         switch item {
         case .row(let row) where row.kind != .status:
-            // Every row is a way into the exchange. A line grows into the sheet
-            // rather than into the paragraph it was standing in for: tapping the
-            // work to read the work is the whole gesture, and it cannot undo the
-            // fold the way an in-place expansion did.
-            Button {
-                onShowSteps(exchange(id: item.id, steps: turn.machineRows, focus: item.id))
-            } label: {
-                TranscriptRowView(row: row, isExpanded: false)
-            }
-            .buttonStyle(.plain)
-            .accessibilityHint("Opens this exchange")
+            TranscriptRowView(
+                row: row,
+                isExpanded: expandedRows.contains(row.id),
+                onToggle: { toggle(row.id) }
+            )
+            .contextMenu { openInDetail(item) }
 
         case .row(let row):
             // A lifecycle notice is a fact about the session, not a thing to open.
             TranscriptRowView(row: row, isExpanded: false)
 
         case .liveStep(let row):
+            // The step being written is already a paragraph; there is nothing left to
+            // open, so a tap takes it to the room the paragraph came from.
             Button {
-                onShowSteps(exchange(id: item.id, steps: turn.machineRows, focus: item.id))
+                onShowSteps(exchange(id: item.id, focus: item.id))
             } label: {
                 LiveStepView(row: row)
             }
             .buttonStyle(.plain)
             .accessibilityHint("Opens this exchange")
+            .contextMenu { openInDetail(item) }
 
         case .stepsSummary:
             // Only the run still going says "running for"; the ones before it are done.
             StepsSummaryView(
                 item: item,
-                isRunning: item.id == turn.liveSummaryID(generating: isWorking)
+                isRunning: item.id == turn.liveSummaryID(generating: isWorking),
+                isExpanded: expandedRows.contains(item.id)
             ) {
-                // The whole exchange, not the one run: the sheet is where the work before
-                // and after this loop lives, and a control onto one run would make a third
-                // place to read the same steps.
-                onShowSteps(exchange(id: item.id, steps: turn.machineRows, focus: nil))
+                // A tap opens the loop where it stands. The sheet holds the whole
+                // exchange, and the press for it is the menu.
+                toggle(item.id)
             }
+            .contextMenu { openInDetail(item) }
 
         case .repeated(let id, let count, let row):
+            // There is nothing to open: the rows behind it are the same by construction.
             Button {
-                onShowSteps(exchange(id: id, steps: turn.machineRows, focus: id))
+                onShowSteps(exchange(id: id, focus: id))
             } label: {
                 RepeatedStepsView(count: count, row: row)
             }
             .buttonStyle(.plain)
             .accessibilityHint("Opens this exchange")
+            .contextMenu { openInDetail(item) }
             .id(id)
+        }
+    }
+
+    /// The press that opens the whole exchange.
+    @ViewBuilder private func openInDetail(_ item: TranscriptItem) -> some View {
+        Button {
+            onShowSteps(exchange(id: item.id, focus: item.id))
+        } label: {
+            Label("Open in detail", systemImage: "arrow.up.left.and.arrow.down.right")
         }
     }
 
@@ -265,13 +279,11 @@ struct TranscriptTurnView: View {
     /// `focus` is the row that was tapped, so the sheet opens on it rather than at the
     /// top: tapping the twentieth step of fifty and landing on step one is a tap that
     /// did nothing useful.
-    private func exchange(id: String, steps: [TranscriptRow], focus: String?) -> TurnSheetContent {
+    private func exchange(id: String, focus: String?) -> TurnSheetContent {
         TurnSheetContent(
             id: id,
             previousReply: previousReply,
-            prompt: turn.promptRow,
-            steps: steps,
-            reply: turn.replyRow,
+            rows: turn.rows,
             focus: focus
         )
     }
@@ -352,6 +364,8 @@ struct StepsSummaryView: View {
     /// "ran for" about work still in progress is a lie, and one that says "running
     /// for" about finished work is a worse one.
     var isRunning = false
+    /// Whether the loop this line stands for is opened out underneath it.
+    var isExpanded = false
     let open: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -361,6 +375,7 @@ struct StepsSummaryView: View {
             FoldedRowFrame(
                 symbol: RowGlyph.steps,
                 tint: Theme.muted,
+                isExpanded: isExpanded,
                 showsDisclosure: true
             ) {
                 label

@@ -506,13 +506,10 @@ struct TaskDetailView: View {
     /// keeps what it has rather than being emptied.
     private func rebuiltSheet(_ current: TurnSheetContent) -> TurnSheetContent? {
         guard let index = turnIndex(forSheetID: current.id) else { return nil }
-        let turn = transcript.turns[index]
         return TurnSheetContent(
             id: current.id,
             previousReply: transcript.turns.reply(preceding: index),
-            prompt: turn.promptRow,
-            steps: turn.machineRows,
-            reply: turn.replyRow,
+            rows: transcript.turns[index].rows,
             focus: current.focus
         )
     }

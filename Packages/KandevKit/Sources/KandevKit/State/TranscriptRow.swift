@@ -173,10 +173,14 @@ public struct TranscriptTurn: Sendable, Identifiable, Equatable {
     /// in addition to the tail's places rather than taking one of them. A run of one is
     /// left alone in either state: a single step is its own line, and folding it away
     /// would hide a command behind the words "ran a command".
+    ///
+    /// `expanded` holds the ids of the loops the reader has opened out. An open loop shows
+    /// all of its rows and keeps its line underneath as the control that closes it again.
     public func items(
         condensing: Bool,
         recentLimit: Int = TranscriptTurn.recentMachineRowLimit,
         generating: Bool = false,
+        expanded: Set<String> = [],
         now: Date = Date()
     ) -> [TranscriptItem] {
         let live = generating && !condensing && rows.last?.isMachineOutput == true
@@ -190,18 +194,26 @@ public struct TranscriptTurn: Sendable, Identifiable, Equatable {
                 items.append(.row(row))
 
             case .run(let run):
-                if index == liveRunIndex {
-                    // The tail keeps its places, plus one for the step being written. A
-                    // run short enough to read is shown as it is.
-                    guard run.count > recentLimit else {
+                let isLive = index == liveRunIndex
+                let isOpen = expanded.contains("steps:\(run[0].id)")
+
+                if isLive {
+                    // A run being written keeps its tail — plus one place for the step
+                    // arriving — unless the reader has opened it out. Either way its line
+                    // stays underneath, as the control that closes it again.
+                    if isOpen || run.count > recentLimit {
+                        let shown = isOpen ? run : Array(run.suffix(recentLimit + 1))
+                        items.append(contentsOf: shown.collapsedRepeats())
+                        items.append(summary(for: run, live: true, now: now))
+                    } else {
                         items.append(contentsOf: run.collapsedRepeats())
-                        continue
                     }
-                    items.append(contentsOf: run.suffix(recentLimit + 1).collapsedRepeats())
-                    items.append(summary(for: run, live: true, now: now))
-                } else if run.count > 1 {
-                    // A finished loop is its summary. The gist is what it is worth, and
-                    // the detail is one tap away.
+                } else if isOpen || run.count > 1 {
+                    // A finished loop is its summary, until the reader opens it. The gist is
+                    // what it is worth unasked; the steps are one tap away.
+                    if isOpen {
+                        items.append(contentsOf: run.collapsedRepeats())
+                    }
                     items.append(summary(for: run, live: false, now: now))
                 } else {
                     items.append(contentsOf: run.collapsedRepeats())

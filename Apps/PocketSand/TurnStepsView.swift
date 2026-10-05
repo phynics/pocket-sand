@@ -28,7 +28,7 @@ struct TurnStepsView: View {
         // The row that was tapped opens with the sheet. Anything else means tapping the
         // twentieth step of fifty and landing on step one.
         let focused = content.focus.flatMap { id in
-            content.steps.first { $0.id == id }?.id
+            content.rows.first { $0.id == id }?.id
         }
         _expandedRows = State(initialValue: focused.map { [$0] } ?? [])
     }
@@ -48,49 +48,28 @@ struct TurnStepsView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: Theme.Space.base) {
-                        let steps = content.steps.drawnSteps()
+                        let steps = content.rows.drawnSteps()
 
-                        // The message that asked for the work, for context: steps on their
+                        // What the agent said before the question, for context: steps on their
                         // own say what happened and not what it was for.
-                        // The rules are the exchange's joints: what was said before the
-                        // question, and what was said after the work. Without them the four
-                        // parts read as one run-on page.
                         if let previous = content.previousReply {
                             TranscriptRowView(row: previous, isExpanded: false, stepDetail: .paragraph)
                                 .id(previous.id)
                             Rule()
                         }
 
-                        if let prompt = content.prompt {
-                            TranscriptRowView(
-                                row: prompt,
-                                isExpanded: expandedRows.contains(prompt.id),
-                                onToggle: { toggle(prompt.id) },
-                                prosePreviewLines: Self.promptPreviewLines
-                            )
-                            .id(prompt.id)
-                        }
-
                         workSummary
 
-                        // Every step, one line each, repeats folded. Nothing is summarised
-                        // away here, because this *is* the summary. A long wait between two
-                        // of them is drawn, so the time a task spent inside one tool call is
-                        // on the page rather than hidden in a gap nobody can see.
+                        // The exchange in order — prompt, work, whatever the agent said between
+                        // runs, its answer — one line each with repeats folded. Nothing is
+                        // summarised away here, because this *is* the summary. A long wait
+                        // between two lines is drawn, so the time a task spent inside one tool
+                        // call is on the page rather than hidden in a gap nobody can see.
                         ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
                             if let gap = wait(before: index, in: steps) {
                                 WaitingLine(seconds: gap)
                             }
                             stepView(step.item)
-                        }
-
-                        if let reply = content.reply {
-                            if let gap = waitBeforeReply {
-                                WaitingLine(seconds: gap)
-                            }
-                            Rule()
-                            TranscriptRowView(row: reply, isExpanded: false)
-                                .id(reply.id)
                         }
                     }
                     .padding(Theme.Space.loose)
@@ -137,9 +116,16 @@ struct TurnStepsView: View {
 
     // MARK: - The work
 
-    /// One line of work, drawn by what it is.
+    /// One line of the exchange, drawn by whose voice it is.
     @ViewBuilder private func stepView(_ item: TranscriptItem) -> some View {
         switch item {
+        case .row(let row) where row.kind == .prompt:
+            TranscriptRowView(
+                row: row,
+                isExpanded: expandedRows.contains(row.id),
+                onToggle: { toggle(row.id) },
+                prosePreviewLines: Self.promptPreviewLines
+            )
         case .row(let row):
             TranscriptRowView(
                 row: row,
@@ -170,7 +156,7 @@ struct TurnStepsView: View {
     /// The transcript's folded line says this about one run; this says it about the
     /// exchange the sheet is, which is what someone opening it came for.
     @ViewBuilder private var workSummary: some View {
-        if let label = TranscriptRow.workSummary(content.steps) {
+        if let label = TranscriptRow.workSummary(machineRows) {
             HStack(alignment: .firstTextBaseline, spacing: Theme.Space.snug) {
                 Text(label)
                     .font(Theme.Face.chrome(.footnote, weight: .medium))
@@ -187,10 +173,15 @@ struct TurnStepsView: View {
         }
     }
 
+    /// The turn's work, without the words around it.
+    private var machineRows: [TranscriptRow] {
+        content.rows.filter(\.isMachineOutput)
+    }
+
     /// The span of the work's own messages: the time the exchange spent on it.
     private var workSpan: TimeInterval? {
-        guard let first = content.steps.first?.at,
-              let last = content.steps.last?.at,
+        guard let first = machineRows.first?.at,
+              let last = machineRows.last?.at,
               last > first
         else { return nil }
         return last.timeIntervalSince(first)
@@ -198,14 +189,8 @@ struct TurnStepsView: View {
 
     /// The pause before the line at `index`, when it was long enough to be worth saying.
     private func wait(before index: Int, in steps: [TranscriptDrawnStep]) -> TimeInterval? {
-        let previousAt = index > 0 ? steps[index - 1].rows.last?.at : content.prompt?.at
+        let previousAt = index > 0 ? steps[index - 1].rows.last?.at : content.previousReply?.at
         guard let from = previousAt, let to = steps[index].rows.first?.at else { return nil }
-        return Self.noticeableWait(from: from, to: to)
-    }
-
-    /// The pause between the last step and the answer.
-    private var waitBeforeReply: TimeInterval? {
-        guard let from = content.steps.last?.at, let to = content.reply?.at else { return nil }
         return Self.noticeableWait(from: from, to: to)
     }
 
@@ -246,9 +231,13 @@ private struct WaitingLine: View {
 struct TurnSheetContent: Identifiable, Equatable {
     let id: String
     let previousReply: TranscriptRow?
-    let prompt: TranscriptRow?
-    let steps: [TranscriptRow]
-    let reply: TranscriptRow?
+    /// The whole turn in order: the prompt, the work, anything the agent said between
+    /// runs, and its answer.
+    ///
+    /// In order, because a sheet that carried only the machine rows and appended *the
+    /// last* reply showed an answer underneath work that came after it — and dropped
+    /// every earlier thing the agent said.
+    let rows: [TranscriptRow]
     /// The row that was tapped to open this, if a row was.
     let focus: String?
 }
@@ -258,17 +247,13 @@ struct TurnSheetContent: Identifiable, Equatable {
         content: TurnSheetContent(
             id: "steps:1",
             previousReply: TranscriptRow(id: "prev", kind: .reply, text: "Both images build and the host check passes."),
-            prompt: TranscriptRow(
-                id: "p",
-                kind: .prompt,
-                text: "Where is ObjectLifecycleController defined?"
-            ),
-            steps: [
+            rows: [
+                TranscriptRow(id: "p", kind: .prompt, text: "Where is ObjectLifecycleController defined?"),
                 TranscriptRow(id: "1", kind: .thinking, text: "The workspace is a checkout of Gnostic."),
                 TranscriptRow(id: "2", kind: .tool, text: "grep -rn \"class ObjectLifecycleController\" v0.7.0"),
                 TranscriptRow(id: "3", kind: .read, text: "Sources/GnosticCore/Container/ObjectLifecycle.swift"),
+                TranscriptRow(id: "last", kind: .reply, text: "It is in Components/Container/ObjectLifecycle.swift."),
             ],
-            reply: TranscriptRow(id: "last", kind: .reply, text: "It is in Components/Container/ObjectLifecycle.swift."),
             focus: "s1"
         ),
         title: "Implement the changes described in the issue"
