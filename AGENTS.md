@@ -43,6 +43,11 @@ root — copy `local.mk.example` and set `KANDEV`. The default in the `Makefile`
 a placeholder, so a fresh clone cannot reach anybody's server by accident, and the
 address of a private one never enters the repository.
 
+An address with no port means what it means everywhere else: `http://box` is
+Kandev's own default port, and `https://box` is 443. Forcing the default onto a
+secure address dials a port nothing is listening on, and the socket reports that as
+a closed connection rather than as a wrong address.
+
 Writes against a real server are read-only by default: use a scratch workspace,
 and ask before anything starts an agent.
 

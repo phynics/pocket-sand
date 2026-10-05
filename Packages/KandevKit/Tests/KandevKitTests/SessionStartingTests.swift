@@ -142,8 +142,9 @@ struct KandevAgentCatalogueTests {
         #expect(decoded.selectableProfiles.map(\.id) == ["on"])
     }
 
-    /// The `dynamic` runtime is a routing placeholder with no profiles, and a
-    /// runtime whose model is missing cannot produce a session either.
+    /// The `dynamic` runtime is a routing placeholder with no profiles, so it is
+    /// left out. A profile whose model the runtime does not confirm is **kept**,
+    /// and marked: hiding it told people they had no agent set up when they did.
     @Test("leaves out runtimes that cannot be the author of a conversation")
     func filtersUnusableRuntimes() throws {
         let decoded = try catalogue(
@@ -160,7 +161,9 @@ struct KandevAgentCatalogueTests {
             """#
         )
 
-        #expect(decoded.selectableProfiles.map(\.id) == ["fine"])
+        #expect(decoded.selectableProfiles.map(\.id) == ["unsupported", "fine"])
+        let unconfirmed = decoded.selectableProfiles.filter(\.isUnconfirmed)
+        #expect(unconfirmed.map(\.id) == ["unsupported"], "and marked as uncertain")
     }
 
     @Test("takes the runtime's name when a profile does not carry one")

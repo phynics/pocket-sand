@@ -75,12 +75,24 @@ public struct KandevAgentProfile: Sendable, Decodable, Equatable, Identifiable {
 
     /// Whether this profile is worth offering as a choice.
     ///
-    /// A profile can be present, disabled, or backed by a model the runtime does
-    /// not have. Starting a session with one of those fails on the server, so it
-    /// is not shown rather than shown and then refused.
+    /// A disabled profile is not: starting a session with one fails on the server.
+    ///
+    /// A profile whose model the runtime does not confirm **is** offered, which is
+    /// a change of mind. Hiding it meant a server with a configured agent told
+    /// people "no agent is set up" — which is not true, and leaves them nothing to
+    /// do about it. The truth is narrower: this one may not run. So it is shown,
+    /// with `isUnconfirmed` beside it, and the server has the last word.
     public var isSelectable: Bool {
-        guard enabled == true, !id.isEmpty else { return false }
-        return providerSupported != false
+        enabled == true && !id.isEmpty
+    }
+
+    /// The runtime does not confirm that this profile's model exists.
+    ///
+    /// Worth saying before someone starts it rather than after: the launch may
+    /// fail, and a refusal that explains itself beats an option that was never
+    /// offered.
+    public var isUnconfirmed: Bool {
+        providerSupported == false
     }
 
     /// A label that distinguishes two profiles of the same runtime.

@@ -97,7 +97,7 @@ public actor WebSocketTransport: KandevTransport {
             try await socket.send(.data(data))
         } catch {
             awaitingResponse.remove(id)
-            throw KandevError.connectionClosed
+            throw KandevError.transport(error.localizedDescription)
         }
 
         let timeout = configuration.requestTimeout

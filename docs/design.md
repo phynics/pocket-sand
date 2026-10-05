@@ -307,6 +307,29 @@ so the screen needs no legend.
   first message, which the screen now *is*. It shows only while the field is
   empty, and then gets out of the way.
 
+### What looking at it changed
+
+Seen on an iPhone against a real server, and four things were wrong that no amount
+of reading the code would have shown:
+
+- **The writing area was in a card.** A `Form`'s inset sections are filled
+  containers with a white background, which is exactly what this app does not use —
+  the sentence was in a box sitting on the paper. A plain list and no row
+  background puts it on the paper.
+- **The agent row was a `Picker`,** which renders its own value in the system's
+  secondary grey, so the two rows of one sentence did not match: "Filed in" had an
+  ink answer and "Agent" a grey one. Both are built the same way now.
+- **The setup row was dressed as a menu** — a value and a choose-chevron — when it
+  is the one thing to do rather than a choice among several.
+- **The keyboard hid half the argument.** Focusing the sentence pushed the second
+  door and the agent's caveat below the fold. Not focusing it shows the whole screen
+  at once, which is the point: what you are asking for, where it goes, who takes it,
+  and the other way to start.
+
+The three notes on the screen are each triggered by a state — the field is empty,
+the agent is unconfirmed, the door is disabled — so in the ordinary case at most
+one of them is showing.
+
 ### When nothing is set up
 
 The screen's third door is the one that matters most, and it is not a door for
@@ -344,6 +367,8 @@ thing that is in the way**.
   leaves the step menu with nothing to offer, so it is hidden. The header then
   shows the agent and no step. Fixing it means the detail screen loading its own
   steps.
-- The list and the transcript have been looked at on an iPhone. **The archive
-  view, the new-task form, the connect screen, the step menu and the session
-  picker have not been seen at all.**
+- The list, the transcript and the create screen have been looked at on an iPhone.
+  **The archive view, the connect screen, the step menu and the session picker have
+  not been seen at all.** Nor has anything on this screen been *driven*: the menus,
+  the doors and the setup chat were built and never tapped, because a simulator has
+  no tap command and creating a task is a write against someone's server.

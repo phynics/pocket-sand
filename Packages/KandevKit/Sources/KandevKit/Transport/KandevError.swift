@@ -10,6 +10,10 @@ public enum KandevError: Error, Sendable, Equatable {
     case notConnected
     /// The socket closed while requests were in flight.
     case connectionClosed
+    /// A frame could not be sent. The transport's own reason travels with it,
+    /// because a guess about it is worse than the truth: a wrong port arrives
+    /// here, and reporting that as a closed connection hides it.
+    case transport(String)
     /// No response arrived in time. Named by action, because "which request" is
     /// the only question worth asking about a timeout.
     case timedOut(action: String)
@@ -42,6 +46,8 @@ extension KandevError: LocalizedError {
             "Not connected to a Kandev server."
         case .connectionClosed:
             "The connection to the Kandev server closed."
+        case .transport(let detail):
+            "Could not reach the Kandev server: \(detail)"
         case .timedOut(let action):
             "\(action) did not answer in time."
         case .missingRequestID:

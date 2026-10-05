@@ -14,13 +14,24 @@ struct KandevEndpointTests {
     @Test("keeps TLS when the base URL has it")
     func httpsBecomesSecureWebSocket() throws {
         let url = try KandevEndpoint.webSocketURL(baseURL: URL(string: "https://kandev.example.com")!)
-        #expect(url.absoluteString == "wss://kandev.example.com:38429/ws")
+        #expect(url.absoluteString == "wss://kandev.example.com/ws")
     }
 
-    @Test("fills in the default port")
+    @Test("fills in the default port only for a plain http address")
     func defaultsThePort() throws {
-        let url = try KandevEndpoint.webSocketURL(baseURL: URL(string: "http://kandev.local")!)
-        #expect(url.port == KandevWireVersion.defaultPort)
+        let plain = try KandevEndpoint.webSocketURL(baseURL: URL(string: "http://kandev.local")!)
+        #expect(plain.port == KandevWireVersion.defaultPort)
+
+        // A deployment behind TLS is on 443. Forcing Kandev's own port onto it
+        // dials a port nothing is listening on, and the socket reports it as a
+        // closed connection rather than as a wrong address.
+        let secure = try KandevEndpoint.webSocketURL(baseURL: URL(string: "https://kandev.example.com")!)
+        #expect(secure.port == nil, "so the standard port applies")
+
+        let explicit = try KandevEndpoint.webSocketURL(
+            baseURL: URL(string: "https://kandev.example.com:38429")!
+        )
+        #expect(explicit.port == 38429, "an explicit port is always kept")
     }
 
     @Test("replaces whatever path the user typed")

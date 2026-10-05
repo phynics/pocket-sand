@@ -32,8 +32,6 @@ struct NewTaskView: View {
     let onOpened: (OpenedTask) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    /// The sentence is the reason this screen exists, so the keyboard opens on it.
-    @FocusState private var isWriting: Bool
 
     var body: some View {
         @Bindable var store = store
@@ -53,6 +51,10 @@ struct NewTaskView: View {
             }
             .paperBackground()
             .scrollContentBackground(.hidden)
+            // A plain list and no row background: a Form's inset cards are filled
+            // containers, and this app does not use them. The sentence is written
+            // on the paper, not in a box on it.
+            .listStyle(.plain)
             .navigationTitle("New task")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -81,10 +83,12 @@ struct NewTaskView: View {
                     .disabled(!store.canFile)
                 }
             }
-            .task {
-                await store.loadOptions()
-                isWriting = store.brief.isEmpty
-            }
+            // Deliberately not focusing the sentence. With the keyboard up, the
+            // second door and the agent's caveat fall below the fold — and the whole
+            // argument of this screen is what it shows at once: what you are asking
+            // for, where it goes, who takes it, and the other way to start. The field
+            // is the largest thing on the screen and does not need to be pointed at.
+            .task { await store.loadOptions() }
         }
     }
 
@@ -103,16 +107,17 @@ struct NewTaskView: View {
                 .font(Theme.Face.prose(.title3))
                 .foregroundStyle(Theme.ink)
                 .lineSpacing(Theme.proseLineSpacing)
-                .lineLimit(2...10)
-                .focused($isWriting)
+                .lineLimit(1...10)
+                .listRowBackground(Color.clear)
             TextField("Title", text: $store.title)
                 .font(Theme.Face.prose(.body))
                 .foregroundStyle(Theme.ink)
+                .listRowBackground(Color.clear)
         } footer: {
             // Said once, while the field is empty, and then out of the way: this is
             // not a note about the work, it is the work.
             if store.brief.isEmpty {
-                Text("This is what the agent is asked to do. It arrives as the first message, word for word.")
+                Text("The agent receives this as its first message, word for word.")
                     .font(Theme.Face.chrome(.footnote))
                     .foregroundStyle(Theme.muted)
             }
@@ -138,17 +143,42 @@ struct NewTaskView: View {
                     isChosen: store.workflowID != nil
                 )
             }
-            Picker("Agent", selection: $store.agentProfileID) {
+            .listRowBackground(Color.clear)
+            // Built like the row above rather than as a `Picker`, which renders its
+            // own value in the system's secondary grey. The two rows are one
+            // sentence about what will happen, so they have to read as one thing:
+            // muted label, ink answer.
+            Menu {
                 ForEach(store.agentProfiles) { profile in
-                    Text(profile.displayName).tag(Optional(profile.id))
+                    Button(profile.displayName) { store.agentProfileID = profile.id }
                 }
+            } label: {
+                consequenceRow(
+                    "Agent",
+                    value: selectedProfile?.displayName ?? "None set up",
+                    isChosen: store.agentProfileID != nil
+                )
             }
+            .listRowBackground(Color.clear)
         } header: {
             Text("What happens next")
                 .font(Theme.Face.chrome(.footnote))
                 .foregroundStyle(Theme.muted)
                 .textCase(nil)
+        } footer: {
+            // Said where the choice is made, and only when it is true: an agent the
+            // runtime cannot vouch for is still offered, because withholding it
+            // tells someone they have nothing set up when they do.
+            if selectedProfile?.isUnconfirmed == true {
+                Text("The runtime does not confirm this agent's model, so starting it may fail.")
+                    .font(Theme.Face.chrome(.footnote))
+                    .foregroundStyle(Theme.muted)
+            }
         }
+    }
+
+    private var selectedProfile: KandevAgentProfile? {
+        store.agentProfiles.first { $0.id == store.agentProfileID }
     }
 
     /// Every workflow, and its steps, in one menu.
@@ -216,8 +246,13 @@ struct NewTaskView: View {
             Button {
                 startChat(.config)
             } label: {
-                consequenceRow("Change the setup", value: "Setup chat", isChosen: true)
+                // An action, not a menu: there is one thing to do about it, and the
+                // chevron and value that a choice would carry said otherwise.
+                Text("Change the setup")
+                    .font(Theme.Face.chrome(.callout))
+                    .foregroundStyle(Theme.ink)
             }
+            .listRowBackground(Color.clear)
         } header: {
             Text("No agent is set up")
                 .font(Theme.Face.chrome(.footnote))
@@ -246,6 +281,7 @@ struct NewTaskView: View {
                     .font(Theme.Face.chrome(.callout))
                     .foregroundStyle(store.canAsk ? Theme.muted : Theme.muted.opacity(0.45))
             }
+            .listRowBackground(Color.clear)
             .disabled(!store.canAsk)
         } footer: {
             if !store.canAsk && !store.needsAgentProfile {

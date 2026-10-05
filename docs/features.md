@@ -49,6 +49,7 @@ this app does not · **·** out of scope on purpose.
 | Filter by workflow or repository | ✅ | ✅ | — | |
 | Fetch one task | ✅ | ✅ | ✅ | `task.get` carries the session state, activity and step, so a row needs no second call. |
 | Create a task | ✅ | ✅ | ✅ | Title, brief, workflow, step, agent. The brief becomes the session's first prompt verbatim. |
+| Set the agent a task runs with | ✅ | ✅ | ✅ | Chosen at creation, and preselected to the one that is set up. A profile the runtime cannot vouch for is offered with the caveat said out loud rather than hidden. |
 | **Edit a task** (`task.update`, `task.state`) | ✅ | ✅ | — | **The largest gap.** No way to fix a title, extend a brief, or change state from the app. A partial update, with a documented guarantee that concurrent edits to different fields both survive. |
 | Move a task between steps | ✅ | ✅ | ✅ | Via HTTP, with a preview of what the move will do first. |
 | Move between workflows | ✅ | ✅ | — | The move route is step-scoped. |
@@ -87,6 +88,21 @@ this app does not · **·** out of scope on purpose.
 | Markdown, code blocks, Mermaid, KaTeX | n/a | ✅ | — | The agent's output *is* markdown and the app draws the characters. Its own preamble arrives as literal `##` and `-`. |
 | Files, diffs, file review, commits | ✅ | ✅ | — | `workspace.files.*`, `session.file_review.*`, `session.git.*`, `file-diff`. |
 | Todos panel | ✅ | ✅ | — | `session.todos_updated`. |
+
+## Chats: quick and configuration
+
+A chat is not a separate object on the server. Starting one creates a **task and a
+session** and answers with both ids, which is why this client can open one in the
+transcript it already has.
+
+| Capability | Server | PWA | Here | Note |
+| --- | --- | --- | --- | --- |
+| Start a quick chat | ✅ | ✅ | ✅ | `POST /workspaces/{id}/quick-chat`. Offered as the second door on the create screen, and named after the sentence rather than "agent - Chat 3". |
+| Start a configuration chat | ✅ | ✅ | ✅ | `POST /workspaces/{id}/config-chat`. Offered where the need arises: the create screen, when there is no agent to start anything with. |
+| List existing chats | ✅ | ✅ | — | `GET /workspaces/{id}/quick-chats` is written down and verified; nothing calls it yet, and a chat that is not in the task list has to be found somewhere. |
+| A chat's own tab, ordering, superseding | ✅ | ✅ | — | The first-party client keeps chats as tabs per workspace and deletes the task behind a superseded one. This client opens a chat as a task, because that is what it is. |
+| File a chat as a task | ✅ | ✅ | — | The point of the design — nothing written is thrown away — and not built: it is `task.update` with a workflow. |
+| Suggestions in a configuration chat | ✅ | ✅ | — | The first-party client offers four canned prompts (add a review step, create a profile, show the workflow, update MCP). |
 
 ## The composer
 

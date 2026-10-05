@@ -31,7 +31,11 @@ public enum KandevEndpoint {
     /// Builds the WebSocket URL for a server.
     ///
     /// - `http` becomes `ws` and `https` becomes `wss`.
-    /// - A missing port becomes `KandevWireVersion.defaultPort`.
+    /// - A missing port becomes `KandevWireVersion.defaultPort` **only for a plain
+    ///   `http` address**, which is how a server on your own machine is written.
+    ///   An `https` address keeps the standard port: a deployment behind TLS is
+    ///   reached on 443, and forcing Kandev's own port onto it dials a port nothing
+    ///   is listening on. An explicit port is always kept.
     /// - Any path on the base URL is replaced by `/ws`.
     /// - A token, when given, is appended as `?token=`. Kandev accepts this for
     ///   clients that cannot send an `Authorization` header during the upgrade.
@@ -40,11 +44,13 @@ public enum KandevEndpoint {
             throw KandevError.invalidBaseURL(baseURL.absoluteString)
         }
 
+        var isSecure = false
         switch components.scheme?.lowercased() {
         case "http", "ws", nil:
             components.scheme = "ws"
         case "https", "wss":
             components.scheme = "wss"
+            isSecure = true
         case .some(let scheme):
             throw KandevError.unsupportedScheme(scheme)
         }
@@ -53,7 +59,7 @@ public enum KandevEndpoint {
             throw KandevError.invalidBaseURL(baseURL.absoluteString)
         }
 
-        if components.port == nil {
+        if components.port == nil, !isSecure {
             components.port = KandevWireVersion.defaultPort
         }
 
