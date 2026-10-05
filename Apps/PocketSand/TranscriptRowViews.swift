@@ -85,6 +85,8 @@ struct TranscriptTurnView: View {
     @Binding var expandedRows: Set<String>
     /// Opens one run's steps somewhere with room to read them.
     let onShowSteps: (TurnSheetContent) -> Void
+    /// Loads a shell call's output for a row the reader opened.
+    var loadOutput: ((String) async -> KandevShellOutput?)?
 
     var body: some View {
         // A running turn is timed as it goes, so its clock has to tick. Only a working
@@ -149,7 +151,8 @@ struct TranscriptTurnView: View {
             TranscriptRowView(
                 row: row,
                 isExpanded: expandedRows.contains(row.id),
-                onToggle: { toggle(row.id) }
+                onToggle: { toggle(row.id) },
+                loadOutput: loadOutput
             )
             .contextMenu { openInDetail(item) }
 
@@ -517,6 +520,12 @@ struct TranscriptRowView: View {
     /// work it explains off the bottom of the sheet.
     var prosePreviewLines: Int?
 
+    /// Loads a shell call's full output, for the one row that has any.
+    ///
+    /// Nil where there is nowhere to fetch from: a preview, or a caller that did not wire a
+    /// source. The body is not in the message, so this is the only way to it.
+    var loadOutput: ((String) async -> KandevShellOutput?)?
+
     var body: some View {
         switch row.kind {
         case .prompt:
@@ -688,7 +697,12 @@ struct TranscriptRowView: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         case .tool, .read, .script:
-            machineText(row.text)
+            VStack(alignment: .leading, spacing: Theme.Space.snug) {
+                machineText(row.text)
+                if let output = row.output {
+                    ToolResultView(summary: output, messageID: row.id, load: loadOutput)
+                }
+            }
         default:
             EmptyView()
         }
@@ -713,6 +727,108 @@ struct TranscriptRowView: View {
             }
         }
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// What a shell command produced: how it ended, how much came back, and the output itself
+/// when it is opened.
+///
+/// The body is not in the message — the server leaves it out of every payload, because it can
+/// run to a quarter of a megabyte — so opening this fetches it, and a command still producing
+/// output keeps fetching until it stops.
+private struct ToolResultView: View {
+    let summary: ToolOutputSummary
+    let messageID: String
+    let load: ((String) async -> KandevShellOutput?)?
+
+    @State private var isOpen = false
+    @State private var output: KandevShellOutput?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.snug) {
+            HStack(spacing: Theme.Space.snug) {
+                statusLabel
+                if summary.hasBody, load != nil {
+                    Button(isOpen ? "Hide output" : "Show output") { isOpen.toggle() }
+                        .font(Theme.Face.chrome(.caption))
+                        .foregroundStyle(Theme.ink)
+                        .buttonStyle(.plain)
+                }
+            }
+            if isOpen { outputBody }
+        }
+        // One loop per open disclosure, and it stops when the row closes or leaves.
+        .task(id: isOpen) {
+            guard isOpen, load != nil else { return }
+            await follow()
+        }
+    }
+
+    /// How the command ended. Unknown is neutral, never success: an absent exit code is not
+    /// evidence that anything worked.
+    @ViewBuilder private var statusLabel: some View {
+        if let code = summary.exitCode {
+            Text(code == 0 ? "Exit code 0" : "Exit code \(code)")
+                .font(Theme.Face.chrome(.caption))
+                .foregroundStyle(code == 0 ? Theme.muted : Color.red)
+        } else {
+            Text("Exit code unavailable")
+                .font(Theme.Face.chrome(.caption))
+                .foregroundStyle(Theme.muted)
+        }
+        if summary.byteCount > 0 {
+            Text(sizeLabel)
+                .font(Theme.Face.machine(.caption2))
+                .foregroundStyle(Theme.muted)
+                .monospacedDigit()
+        }
+    }
+
+    private var sizeLabel: String {
+        let size = summary.byteCount.formatted(.byteCount(style: .file))
+        return summary.truncated ? "\(size), truncated" : size
+    }
+
+    @ViewBuilder private var outputBody: some View {
+        if let output {
+            VStack(alignment: .leading, spacing: Theme.Space.hair) {
+                ScrollView {
+                    Text(output.text.isEmpty ? "Nothing yet." : output.text)
+                        .font(Theme.Face.machine(.caption))
+                        .foregroundStyle(Theme.ink)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 220)
+                if output.isRunning {
+                    Text("Still running")
+                        .font(Theme.Face.chrome(.caption2))
+                        .foregroundStyle(Theme.muted)
+                }
+            }
+        } else {
+            ProgressView().controlSize(.small)
+        }
+    }
+
+    /// Fetches a snapshot, and keeps fetching while the command is still producing output.
+    ///
+    /// One request at a time, a second apart, backing off to five when the server refuses —
+    /// and it stops the moment the command is done. The polling is the disclosure's, not the
+    /// session's, so it costs nothing while nobody is looking.
+    private func follow() async {
+        var wait: Double = 1
+        while isOpen, !Task.isCancelled {
+            guard let snapshot = await load?(messageID) else {
+                wait = min(wait * 2, 5)
+                try? await Task.sleep(for: .seconds(wait))
+                continue
+            }
+            output = snapshot
+            guard snapshot.isRunning else { return }
+            wait = 1
+            try? await Task.sleep(for: .seconds(wait))
+        }
     }
 }
 

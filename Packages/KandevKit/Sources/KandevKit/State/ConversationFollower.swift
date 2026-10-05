@@ -40,12 +40,22 @@ public protocol KandevLiveConversations: KandevConversationStreaming {
 
 /// Everything a conversation screen needs from a server: read it, write to it,
 /// and hear about changes.
+/// Fetching one shell call's full output, which message payloads leave out.
+///
+/// Narrower than the whole server: an output disclosure needs no way to write anything.
+public protocol KandevShellOutputSource: Sendable {
+    func shellOutput(sessionID: String, messageID: String) async throws -> KandevShellOutput
+}
+
+/// Everything a conversation screen needs from a server: read it, write to it,
+/// find out what a command produced, and hear about changes.
 public protocol KandevConversationServer: KandevTranscriptSource, KandevPromptSource,
-    KandevLiveConversations, KandevSessionStarting, KandevTaskMoving, KandevTaskRemoving
+    KandevLiveConversations, KandevSessionStarting, KandevTaskMoving, KandevTaskRemoving,
+    KandevShellOutputSource
 {}
 
 extension KandevClient: KandevConversationStreaming, KandevLiveConversations,
-    KandevSessionStarting, KandevTaskMoving, KandevTaskRemoving,
+    KandevSessionStarting, KandevTaskMoving, KandevTaskRemoving, KandevShellOutputSource,
     KandevConversationServer {}
 
 /// Follows one session's conversation.

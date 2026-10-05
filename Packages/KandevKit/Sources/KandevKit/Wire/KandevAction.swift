@@ -259,6 +259,17 @@ public enum KandevHTTPRoute {
         "/api/v1/tasks/\(taskID)/sessions"
     }
 
+    /// One shell tool call's full output, which message payloads project away.
+    ///
+    /// A message carries the summary — whether there is output, how many bytes, whether it
+    /// was truncated, the exit code — and never the body, which is bounded at 256 KiB per
+    /// field and is read in a minority of conversations. Answers `404` for a message that is
+    /// not a shell call, is not in the path session, or does not exist; the caller cannot
+    /// tell those apart, which is deliberate.
+    public static func shellOutput(sessionID: String, messageID: String) -> String {
+        "/api/v1/task-sessions/\(sessionID)/messages/\(messageID)/shell-output"
+    }
+
     /// The kanban board for one workflow: its steps and their tasks.
     ///
     /// The board view fans this out, one request per workflow, and aggregates

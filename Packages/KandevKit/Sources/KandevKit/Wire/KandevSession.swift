@@ -186,6 +186,12 @@ extension JSONValue {
         if case .string(let value) = self { return value }
         return nil
     }
+
+    /// The boolean inside a `.bool` case.
+    public var boolValue: Bool? {
+        if case .bool(let value) = self { return value }
+        return nil
+    }
 }
 
 /// One page of a session's messages.
@@ -204,5 +210,55 @@ public struct KandevMessagePage: Sendable, Codable, Equatable {
         self.messages = messages
         self.cursor = cursor
         self.hasMore = hasMore
+    }
+}
+
+/// A shell tool call's full output, which every message payload leaves out.
+///
+/// The persisted message carries only a summary — whether there is output, how many bytes,
+/// whether it was truncated, and the exit code — because the body is bounded at 256 KiB per
+/// field and is read in a minority of conversations. This is where the body is fetched from,
+/// on demand, while an open disclosure is on screen.
+///
+/// Verified against the server's own requirements and decision records: the body is projected
+/// out of every list, boot, and live payload, and one session-scoped route returns the latest
+/// snapshot.
+public struct KandevShellOutput: Sendable, Decodable, Equatable {
+    public var messageID: String
+    /// The tool's own status: `running`, `complete`, `failed`, or `cancelled`.
+    public var status: String?
+    public var updatedAt: KandevTimestamp?
+    public var output: Output
+
+    public struct Output: Sendable, Decodable, Equatable {
+        /// Absent means unknown, which is not the same as success.
+        public var exitCode: Int?
+        /// The combined terminal stream, unless the agent explicitly separated the two.
+        public var stdout: String?
+        public var stderr: String?
+        public var truncated: Bool?
+
+        enum CodingKeys: String, CodingKey {
+            case stdout, stderr, truncated
+            case exitCode = "exit_code"
+        }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case status, output
+        case messageID = "message_id"
+        case updatedAt = "updated_at"
+    }
+
+    /// Whether the command is still producing output.
+    public var isRunning: Bool { status == "running" }
+
+    /// The text to show: the combined stream, with an explicit stderr after it.
+    public var text: String {
+        let out = output.stdout ?? ""
+        let err = output.stderr ?? ""
+        if out.isEmpty { return err }
+        if err.isEmpty { return out }
+        return out + "\n" + err
     }
 }

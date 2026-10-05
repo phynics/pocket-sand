@@ -74,6 +74,38 @@ struct TranscriptRowTests {
         #expect(row.at != nil)
     }
 
+    /// Captured from a live server. The message carries the *summary* of a command's output
+    /// and never the output itself: the server projects the body out of every payload and
+    /// serves it from one route on demand.
+    @Test("a shell call carries the summary of its output, not the output")
+    func shellCallSummary() throws {
+        let message = try JSONDecoder().decode(
+            KandevMessage.self,
+            from: Data(#"""
+{"author_type": "agent", "content": "git status", "id": "a2cb1c4e", "metadata": {"normalized": {"kind": "shell_exec", "shell_exec": {"command": "", "output": {"exit_code": 0, "has_output": true, "stderr_bytes": 0, "stdout_bytes": 760, "truncated": false}}}, "status": "complete", "title": "git status", "tool_call_id": "call_00"}, "type": "tool_execute"}
+"""#.utf8)
+        )
+
+        let row = try #require(TranscriptRow(message: message))
+        let output = try #require(row.output)
+        #expect(output.exitCode == 0)
+        #expect(output.stdoutBytes == 760)
+        #expect(output.byteCount == 760)
+        #expect(output.hasBody)
+        #expect(row.text == "git status")
+    }
+
+    /// A command with nothing retained carries no summary, so the row offers nothing to open.
+    @Test("a shell call with no retained output carries no summary")
+    func shellCallWithoutOutput() throws {
+        let message = try JSONDecoder().decode(
+            KandevMessage.self,
+            from: Data(#"{"id":"m1","type":"tool_execute","content":"ls","metadata":{"normalized":{"shell_exec":{"output":{"stdout_bytes":0,"stderr_bytes":0}}}}}"#.utf8)
+        )
+
+        #expect(TranscriptRow(message: message)?.output == nil)
+    }
+
     /// Captured from a live server while an agent worked. `tool_read` was a kind
     /// this client had never seen, and treating it as unknown rendered the word
     /// "read" as a serif headline in the middle of a transcript.

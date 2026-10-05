@@ -10,6 +10,8 @@ struct TaskDetailView: View {
     let taskID: String
 
     private let catalogue: WorkflowCatalogue
+    /// Where a shell call's output is fetched from, for a row that is opened.
+    private let outputSource: any KandevShellOutputSource
 
     @State private var conversation: TaskConversationStore
     @State private var move: TaskMoveStore
@@ -41,6 +43,7 @@ struct TaskDetailView: View {
     ) {
         self.taskID = taskID
         self.catalogue = catalogue
+        self.outputSource = source
         _conversation = State(
             initialValue: TaskConversationStore(
                 transcriptSource: source,
@@ -153,7 +156,11 @@ struct TaskDetailView: View {
             // The sheet decides its own detents, because a set of them has no order
             // and the one it opens at has to be said out loud.
             .sheet(item: $stepsContent) { content in
-                TurnStepsView(content: content, title: transcript.task?.title ?? "Task")
+                TurnStepsView(
+                    content: content,
+                    title: transcript.task?.title ?? "Task",
+                    loadOutput: loadShellOutput
+                )
             }
             // The sheet opens on a snapshot of the exchange, and a running turn keeps
             // producing steps behind it: left alone, the snapshot freezes at the moment
@@ -361,7 +368,8 @@ struct TaskDetailView: View {
                     isWorking: isLiveTurn,
                     previousReply: transcript.turns.reply(preceding: index),
                     expandedRows: $expandedRows,
-                    onShowSteps: { stepsContent = $0 }
+                    onShowSteps: { stepsContent = $0 },
+                    loadOutput: loadShellOutput
                 )
             }
         }
@@ -484,6 +492,17 @@ struct TaskDetailView: View {
             // composer's glass with the two reading as one surface.
             .padding(.bottom, Theme.Space.base)
         }
+    }
+
+    /// Reads a shell call's output for a row that was opened.
+    ///
+    /// The body is not in the transcript — the server leaves it out of every message — so
+    /// this is the one read the screen cannot answer from what it already holds. A refusal
+    /// is returned as nothing rather than thrown: a disclosure with no output is a smaller
+    /// problem than a screen with an error on it.
+    private func loadShellOutput(_ messageID: String) async -> KandevShellOutput? {
+        guard let sessionID = transcript.selectedSessionID else { return nil }
+        return try? await outputSource.shellOutput(sessionID: sessionID, messageID: messageID)
     }
 
     /// Which turn a sheet's id came from: a row's own id, the first machine row of a run

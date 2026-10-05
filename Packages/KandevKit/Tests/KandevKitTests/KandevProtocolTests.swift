@@ -445,6 +445,14 @@ struct KandevHTTPRouteTests {
         #expect(KandevHTTPRoute.taskSessions(taskID: "t1") == "/api/v1/tasks/t1/sessions")
     }
 
+    @Test("a shell call's output lives under its session and message")
+    func shellOutputPath() {
+        #expect(
+            KandevHTTPRoute.shellOutput(sessionID: "s1", messageID: "m1")
+                == "/api/v1/task-sessions/s1/messages/m1/shell-output"
+        )
+    }
+
     @Test("a move preview and a commit are siblings")
     func movePaths() {
         #expect(KandevHTTPRoute.taskMove(taskID: "t1") == "/api/v1/tasks/t1/move")

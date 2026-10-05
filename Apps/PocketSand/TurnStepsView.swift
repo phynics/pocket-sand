@@ -22,9 +22,18 @@ struct TurnStepsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var expandedRows: Set<String>
 
-    init(content: TurnSheetContent, title: String) {
+    /// Loads a shell call's full output for a row the reader opened. Nil where there is
+    /// nowhere to fetch from, and then a command's output is simply not offered.
+    var loadOutput: ((String) async -> KandevShellOutput?)?
+
+    init(
+        content: TurnSheetContent,
+        title: String,
+        loadOutput: ((String) async -> KandevShellOutput?)? = nil
+    ) {
         self.content = content
         self.title = title
+        self.loadOutput = loadOutput
         // The row that was tapped opens with the sheet. Anything else means tapping the
         // twentieth step of fifty and landing on step one.
         let focused = content.focus.flatMap { id in
@@ -131,7 +140,8 @@ struct TurnStepsView: View {
                 row: row,
                 isExpanded: expandedRows.contains(row.id),
                 onToggle: { toggle(row.id) },
-                stepDetail: .paragraph
+                stepDetail: .paragraph,
+                loadOutput: loadOutput
             )
         case .repeated(let id, let count, let row):
             RepeatedStepsView(count: count, row: row)

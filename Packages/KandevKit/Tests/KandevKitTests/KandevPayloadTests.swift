@@ -11,6 +11,29 @@ struct KandevPayloadTests {
         try JSONDecoder().decode(T.self, from: Data(json.utf8))
     }
 
+    /// The full output of a shell call, which is fetched rather than listed: the message
+    /// carries only its summary, and the body is bounded at 256 KiB per field.
+    @Test("decodes a shell output snapshot, open or finished")
+    func decodesShellOutput() throws {
+        let running = try decode(
+            KandevShellOutput.self,
+            #"{"message_id":"m1","status":"running","updated_at":"2026-07-16T12:00:00Z","output":{"exit_code":0,"stdout":"hello","stderr":"oops","truncated":false}}"#
+        )
+        #expect(running.messageID == "m1")
+        #expect(running.isRunning)
+        #expect(running.output.exitCode == 0)
+        #expect(running.text == "hello\noops")
+
+        // An absent exit code is unknown, which the UI must not read as success.
+        let finished = try decode(
+            KandevShellOutput.self,
+            #"{"message_id":"m2","status":"complete","output":{"stdout":"done"}}"#
+        )
+        #expect(finished.isRunning == false)
+        #expect(finished.output.exitCode == nil)
+        #expect(finished.text == "done")
+    }
+
     @Test("decodes a task from the flat list, where labels are a JSON string")
     func decodesTaskFromFlatList() throws {
         let task = try decode(KandevTask.self, #"""

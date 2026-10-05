@@ -48,13 +48,81 @@ public struct TranscriptRow: Sendable, Identifiable, Equatable {
     /// ran for half an hour whose messages span three minutes is a gap, and this is where
     /// that gap is read from. Nil when the server sent no date.
     public var at: Date?
+    /// What the server says a shell call produced, without the output itself.
+    ///
+    /// The body is projected out of every message payload and fetched only when someone
+    /// opens it; this is what the row can say without asking — that there is output, how
+    /// much of it, and how the command ended.
+    public var output: ToolOutputSummary?
 
-    public init(id: String, kind: Kind, text: String, detail: String? = nil, at: Date? = nil) {
+    public init(
+        id: String,
+        kind: Kind,
+        text: String,
+        detail: String? = nil,
+        at: Date? = nil,
+        output: ToolOutputSummary? = nil
+    ) {
         self.id = id
         self.kind = kind
         self.text = text
         self.detail = detail
         self.at = at
+        self.output = output
+    }
+}
+
+/// What a shell command produced, as a message carries it.
+///
+/// The summary, not the body: the server projects the transcript out of every payload and
+/// serves it from one route on demand, because it can run to a quarter of a megabyte and is
+/// read in a minority of conversations.
+public struct ToolOutputSummary: Sendable, Equatable {
+    /// Absent means unknown, which is not the same as success.
+    public var exitCode: Int?
+    public var hasOutput: Bool
+    public var stdoutBytes: Int
+    public var stderrBytes: Int
+    public var truncated: Bool
+
+    public init(
+        exitCode: Int? = nil,
+        hasOutput: Bool = false,
+        stdoutBytes: Int = 0,
+        stderrBytes: Int = 0,
+        truncated: Bool = false
+    ) {
+        self.exitCode = exitCode
+        self.hasOutput = hasOutput
+        self.stdoutBytes = stdoutBytes
+        self.stderrBytes = stderrBytes
+        self.truncated = truncated
+    }
+
+    /// The retained bytes, which is what a size says without the body.
+    public var byteCount: Int { stdoutBytes + stderrBytes }
+
+    /// Whether there is anything behind the disclosure.
+    public var hasBody: Bool { hasOutput || byteCount > 0 }
+}
+
+extension ToolOutputSummary {
+    /// Reads the summary a message carries, or nil when there is nothing to say: not a
+    /// shell call, or one whose output the server did not report.
+    init?(message: KandevMessage) {
+        guard let raw = message.metadata?["normalized"]?["shell_exec"]?["output"] else {
+            return nil
+        }
+
+        let summary = ToolOutputSummary(
+            exitCode: raw["exit_code"]?.intValue,
+            hasOutput: raw["has_output"]?.boolValue ?? false,
+            stdoutBytes: raw["stdout_bytes"]?.intValue ?? 0,
+            stderrBytes: raw["stderr_bytes"]?.intValue ?? 0,
+            truncated: raw["truncated"]?.boolValue ?? false
+        )
+        guard summary.hasBody || summary.exitCode != nil || summary.truncated else { return nil }
+        self = summary
     }
 }
 
@@ -615,7 +683,8 @@ extension TranscriptRow {
             kind: kind,
             text: label,
             detail: Self.notableStatus(message.metadata?["status"]?.stringValue),
-            at: message.createdAt?.date
+            at: message.createdAt?.date,
+            output: ToolOutputSummary(message: message)
         )
     }
 }

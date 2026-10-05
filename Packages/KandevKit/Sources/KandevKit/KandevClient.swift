@@ -146,6 +146,18 @@ public struct KandevClient: Sendable {
         ).sessions
     }
 
+    /// One shell tool call's full output.
+    ///
+    /// Fetched rather than listed: the body is left out of every message payload because it
+    /// can run to a quarter of a megabyte, and only a reader who opens the disclosure wants
+    /// it. A running command is polled by the caller; this is one snapshot.
+    public func shellOutput(sessionID: String, messageID: String) async throws -> KandevShellOutput {
+        try await http.get(
+            KandevHTTPRoute.shellOutput(sessionID: sessionID, messageID: messageID),
+            as: KandevShellOutput.self
+        )
+    }
+
     // MARK: - A conversation
 
     public func messages(
