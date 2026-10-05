@@ -12,6 +12,8 @@ import SwiftUI
 /// column of times is comparable down the page without the eye jumping.
 struct TaskRowView: View {
     let row: TaskRow
+    /// Whether anything has happened since this task was last opened.
+    var isUnread = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.hair) {
@@ -73,13 +75,14 @@ struct TaskRowView: View {
 
     /// What the spine is saying, in the order the conditions exclude each other.
     ///
-    /// A failed task is not also working, and a task waiting on an answer is not
-    /// merely "waiting for you": one has stopped, the other has not.
+    /// A failed task is not also working, and a task waiting on an answer is not merely
+    /// unread: one has stopped on a question, the other has finished and been missed. Motion
+    /// is kept for the two states where an agent is doing something.
     private var spineState: SpineState {
         if row.isFailed { return .failed }
-        if row.isAwaitingAnswer { return .answering }
         if row.isWorking { return .working }
-        if row.needsAttention { return .attention }
+        if row.isAwaitingAnswer { return .asking }
+        if isUnread { return .unread }
         return .quiet
     }
 
@@ -91,6 +94,9 @@ struct TaskRowView: View {
         else if row.isAwaitingAnswer { parts.append("Waiting for your answer") }
         else if row.isWorking { parts.append("Agent working") }
         else if row.needsAttention { parts.append("Waiting for you") }
+        // Said whether or not the spine is marking it: the mark clears when it is read, and
+        // "a person is needed here" does not.
+        if isUnread { parts.append("New since you last looked") }
         if let activity = row.lastActivity {
             parts.append("Last activity \(activity.formatted(.relative(presentation: .named)))")
         }

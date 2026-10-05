@@ -65,7 +65,8 @@ struct TaskListView: View {
                         source: session.client,
                         catalogue: session.catalogue,
                         permissions: store.workspace?.conversationPermissions ?? .default,
-                        initialDraft: taskID == openedTaskID ? openedSentence : ""
+                        initialDraft: taskID == openedTaskID ? openedSentence : "",
+                        read: session.read
                     )
                 }
                 .refreshable { await store.refresh() }
@@ -192,7 +193,10 @@ struct TaskListView: View {
             Button {
                 path = [row.id]
             } label: {
-                TaskRowView(row: row)
+                TaskRowView(
+                    row: row,
+                    isUnread: session.read.isUnread(taskID: row.id, lastActivity: row.lastActivity)
+                )
             }
             .buttonStyle(.plain)
             .task {

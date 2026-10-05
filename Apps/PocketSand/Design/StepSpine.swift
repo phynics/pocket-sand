@@ -18,6 +18,7 @@ struct StepSpine: View {
         Rectangle()
             .fill(fill)
             .frame(width: state.width)
+            .brightness(state.brightness)
             .workingPulse(state.isPulsing, period: state.pulsePeriod)
     }
 
@@ -36,43 +37,48 @@ struct StepSpine: View {
 /// with a second mark beside it. A square in the corner said "attention" and nothing
 /// else, and it read as a stray artefact rather than as part of the row.
 enum SpineState: Equatable {
-    /// Nothing is happening and nobody is needed.
+    /// Nothing is happening and nothing has been missed.
     case quiet
-    /// An agent is working.
+    /// Something has happened since this task was last opened, and nothing is happening
+    /// now. Heavier than quiet: a mark to catch the eye rather than motion to hold it.
+    case unread
+    /// An agent is working. The slow pulse is what "is anything happening" looks like.
     case working
-    /// The ball is in a person's court: a review gate, or a session that finished its
-    /// turn and is waiting for someone to say what next.
-    case attention
-    /// An agent has asked for something and work has stopped on the answer. Thicker,
-    /// because this is the one state where a person is the blocker.
-    case answering
+    /// An agent has asked a person something and cannot go on without the answer. The fast
+    /// pulse, because "does anything need me" is a more urgent question than "is anything
+    /// happening".
+    case asking
     /// The server called the task failed.
     case failed
 
-    /// How long one breath takes, or nil for a mark that holds still.
+    /// Whether the mark breathes.
     ///
-    /// Attention breathes at about twice the rate of work: "does anything need me" is a
-    /// more urgent question than "is anything happening", and the difference in rate is
-    /// what makes it legible without a second colour or a second mark.
-    var pulsePeriod: TimeInterval {
-        switch self {
-        case .working: 1.1
-        case .attention, .answering: 0.55
-        case .quiet, .failed: 1.1
-        }
-    }
-
+    /// Only work and a question do. Waiting to be read is not something to animate, and a row
+    /// that blinks while nothing is happening is a row that lies about it: motion here means
+    /// an agent is doing something, and nothing else may borrow it.
     var isPulsing: Bool {
         switch self {
-        case .working, .attention, .answering: true
-        case .quiet, .failed: false
+        case .working, .asking: true
+        case .quiet, .unread, .failed: false
         }
     }
 
-    /// A wider mark when a person is the blocker. Weight reads as importance without
+    /// How long one breath takes. A question breathes at about twice the rate of work, which
+    /// is what makes the two legible without a second colour or a second mark.
+    var pulsePeriod: TimeInterval {
+        self == .asking ? 0.55 : 1.1
+    }
+
+    /// A wider mark for what has not been read yet. Weight reads as importance without
     /// introducing a hue, and the spine is the one place on the row that is not text.
     var width: CGFloat {
-        self == .answering ? Theme.Spine.width + 2 : Theme.Spine.width
+        self == .unread ? Theme.Spine.width + 2 : Theme.Spine.width
+    }
+
+    /// And brighter, for the same reason. Small: the spine is the only colour on the row, and
+    /// a large lift washes the hue out.
+    var brightness: Double {
+        self == .unread ? 0.12 : 0
     }
 }
 
@@ -129,11 +135,11 @@ enum StepPalette {
             Text("In Progress, working").padding(.leading, Theme.Spine.textInset)
         }
         HStack(spacing: 0) {
-            StepSpine(colorToken: "bg-yellow-500", state: .attention)
-            Text("Review, waiting for you").padding(.leading, Theme.Spine.textInset)
+            StepSpine(colorToken: "bg-yellow-500", state: .unread)
+            Text("Unread since you last looked").padding(.leading, Theme.Spine.textInset)
         }
         HStack(spacing: 0) {
-            StepSpine(colorToken: "bg-blue-500", state: .answering)
+            StepSpine(colorToken: "bg-blue-500", state: .asking)
             Text("Asked a question").padding(.leading, Theme.Spine.textInset)
         }
         HStack(spacing: 0) {

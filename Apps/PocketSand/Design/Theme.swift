@@ -397,12 +397,19 @@ struct WorkingPulse: ViewModifier {
             // A floor of 0.55 rather than 0.3: the spine is only three points
             // wide, and at 30% a working row reads as a missing one.
             .opacity(isWorking && isDim ? 0.55 : 1)
+            // The animation follows the value instead of being started by an event. A
+            // `repeatForever` begun in `onChange` keeps running after the reason for it is
+            // gone — a row that goes on blinking for a task that stopped minutes ago — and
+            // setting the value back without one does not reliably stop it. Attached to the
+            // value, the pulse exists only while there is something to pulse for.
+            .animation(
+                isWorking && !reduceMotion
+                    ? .easeInOut(duration: period).repeatForever(autoreverses: true)
+                    : nil,
+                value: isDim
+            )
             .onChange(of: isWorking, initial: true) { _, working in
-                isDim = false
-                guard working, !reduceMotion else { return }
-                withAnimation(.easeInOut(duration: period).repeatForever(autoreverses: true)) {
-                    isDim = true
-                }
+                isDim = working && !reduceMotion
             }
     }
 }

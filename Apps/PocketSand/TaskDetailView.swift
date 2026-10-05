@@ -12,6 +12,8 @@ struct TaskDetailView: View {
     private let catalogue: WorkflowCatalogue
     /// Where a shell call's output is fetched from, for a row that is opened.
     private let outputSource: any KandevShellOutputSource
+    /// The list's read clock, so opening a conversation stops its row saying something is new.
+    private let read: TaskReadStore
 
     @State private var conversation: TaskConversationStore
     @State private var move: TaskMoveStore
@@ -39,11 +41,13 @@ struct TaskDetailView: View {
         source: any KandevConversationServer,
         catalogue: WorkflowCatalogue,
         permissions: ConversationPermissions = .default,
-        initialDraft: String = ""
+        initialDraft: String = "",
+        read: TaskReadStore
     ) {
         self.taskID = taskID
         self.catalogue = catalogue
         self.outputSource = source
+        self.read = read
         _conversation = State(
             initialValue: TaskConversationStore(
                 transcriptSource: source,
@@ -93,8 +97,10 @@ struct TaskDetailView: View {
                     ScreenshotTour.ready(.loaded)
                 }
             }
+            markSeen()
         }
         .onChange(of: transcript.task) { _, task in
+            markSeen()
             guard let task else { return }
             move.bind(
                 taskID: task.id,
@@ -168,6 +174,8 @@ struct TaskDetailView: View {
             // exchange it claims to be. Row ids are the server's message ids, so nothing
             // already on screen moves when it is rebuilt.
             .onChange(of: transcript.turns) { _, _ in
+                // Reading the conversation while it grows keeps it read.
+                markSeen()
                 guard let current = stepsContent,
                       let rebuilt = rebuiltSheet(current),
                       rebuilt != current
@@ -492,6 +500,12 @@ struct TaskDetailView: View {
             // composer's glass with the two reading as one surface.
             .padding(.bottom, Theme.Space.base)
         }
+    }
+
+    /// Records the task as looked at, as of the activity that is on screen, so its row stops
+    /// saying something is new.
+    private func markSeen() {
+        read.markSeen(taskID: taskID, activity: transcript.task?.lastActivity?.date)
     }
 
     /// Reads a shell call's output for a row that was opened.

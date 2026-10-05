@@ -193,6 +193,9 @@ public final class AppSession {
     /// that need them.
     public let catalogue: WorkflowCatalogue
     public let taskList: TaskListStore
+    /// Which tasks have been looked at, so a row can say something is new. Shared by the
+    /// list that marks it and the conversation that clears it.
+    public let read: TaskReadStore
 
     public init(bookmark: ServerBookmark, token: String?) {
         let url = bookmark.baseURL ?? URL(string: "http://localhost")!
@@ -201,6 +204,7 @@ public final class AppSession {
         self.bookmark = bookmark
         self.client = client
         self.catalogue = catalogue
+        self.read = TaskReadStore()
         self.taskList = TaskListStore(source: client, hub: client.hub, catalogue: catalogue)
     }
 
