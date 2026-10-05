@@ -76,11 +76,22 @@ public final class TaskListStore {
     public private(set) var showingArchived = false
 
     /// Newest activity first, which is the order the list is designed around.
-    public var query: KandevTaskListQuery {
+    public var query: KandevTaskListQuery { listQuery(page: nil) }
+
+    /// The list's query, at one page. `nil` is the server's first page.
+    ///
+    /// One builder, because there are two ways into the list — a refresh and its next
+    /// page — and a page that forgot the archive flag or the ephemeral one would return
+    /// a different list than the one it was appending to.
+    private func listQuery(page: Int?) -> KandevTaskListQuery {
         KandevTaskListQuery(
+            page: page,
             pageSize: pageSize,
             sort: .updatedDesc,
-            archived: showingArchived ? .onlyArchived : .active
+            archived: showingArchived ? .onlyArchived : .active,
+            // Chats belong on the board, not in the archive. The server hides ephemeral
+            // tasks unless asked, and this is the ask.
+            includeEphemeral: !showingArchived
         )
     }
 
@@ -163,7 +174,7 @@ public final class TaskListStore {
         do {
             let page = try await source.tasks(
                 workspaceID: workspaceID,
-                query: KandevTaskListQuery(page: nextPage, pageSize: pageSize, sort: .updatedDesc)
+                query: listQuery(page: nextPage)
             )
             tasks.append(contentsOf: page.tasks)
             totalOnServer = page.total

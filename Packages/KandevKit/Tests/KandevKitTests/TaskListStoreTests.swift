@@ -17,6 +17,7 @@ actor FakeTaskSource: KandevTaskSource {
     /// Tasks keyed by page number, so paging can be exercised.
     var tasksByPage: [Int: KandevTaskList] = [:]
     private(set) var requestedPages: [Int] = []
+    private(set) var requestedQueries: [KandevTaskListQuery] = []
     private(set) var stepRequests: [String] = []
 
     func setWorkspaces(_ workspaces: [KandevWorkspace]) {
@@ -68,6 +69,7 @@ actor FakeTaskSource: KandevTaskSource {
     func tasks(workspaceID: String, query: KandevTaskListQuery) async throws -> KandevTaskList {
         let page = query.page ?? 1
         requestedPages.append(page)
+        requestedQueries.append(query)
         if let tasksFailure {
             self.tasksFailure = nil
             throw tasksFailure
@@ -189,6 +191,59 @@ struct TaskListStoreTests {
         await store.loadMore()
         pages = await source.requestedPages
         #expect(pages == [1, 2])
+    }
+
+    /// The server hides ephemeral tasks unless asked, and a quick chat is ephemeral. The
+    /// Chats section is client-side grouping, so without the ask the section is a
+    /// heading nothing ever arrives for.
+    @Test("asks the server for chats, and stops asking in the archive")
+    func asksForChats() async {
+        let (store, source) = await loadedStore(tasks: [makeTask(id: "t1", title: "One", stepID: "step-work")])
+
+        #expect(store.query.includeEphemeral)
+        var queries = await source.requestedQueries
+        #expect(queries.last?.includeEphemeral == true, "the first page did not ask for chats")
+
+        await store.setShowingArchived(true)
+        queries = await source.requestedQueries
+        #expect(queries.last?.includeEphemeral == false, "the archive is not the place for chats")
+    }
+
+    /// The next page has to be the same list as the page it appends to. It used to be
+    /// built from scratch, which dropped the archive flag — so paging the archive
+    /// quietly fetched active work — and would have dropped the ask for chats too.
+    @Test("the next page keeps the flags the first page was read with")
+    func nextPageKeepsTheQuery() async {
+        let (store, source) = await loadedStore(
+            tasks: [makeTask(id: "t1", title: "One", stepID: "step-work")],
+            total: 3
+        )
+        await source.setTasks([makeTask(id: "t2", title: "Two", stepID: "step-work")], total: 3, page: 2)
+
+        await store.loadMore()
+
+        let queries = await source.requestedQueries
+        let pages = await source.requestedPages
+        #expect(pages == [1, 2])
+        #expect(queries.last?.page == 2)
+        #expect(queries.last?.includeEphemeral == true)
+        #expect(queries.last?.archived == .active)
+    }
+
+    @Test("paging inside the archive asks for archived work again")
+    func pagingTheArchiveKeepsTheMode() async {
+        let (store, source) = await loadedStore(
+            tasks: [makeTask(id: "t9", title: "In the archive", stepID: nil)],
+            total: 3
+        )
+        await store.setShowingArchived(true)
+        await source.setTasks([makeTask(id: "t10", title: "Also archived", stepID: nil)], total: 3, page: 2)
+
+        await store.loadMore()
+
+        let queries = await source.requestedQueries
+        #expect(queries.last?.page == 2)
+        #expect(queries.last?.archived == .onlyArchived, "the next page must stay in the archive")
     }
 
     @Test("fetches each workflow's steps once, not once per refresh")

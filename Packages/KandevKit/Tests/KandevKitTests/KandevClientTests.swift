@@ -199,6 +199,16 @@ struct KandevTaskListQueryTests {
             #expect(value(items, "sort") == sort.rawValue)
         }
     }
+
+    /// The server hides ephemeral tasks unless asked, and a chat is ephemeral.
+    @Test("asks for ephemeral tasks only when told to")
+    func ephemeralTasks() {
+        let without = KandevTaskListQuery().queryItems.map(\.name)
+        #expect(!without.contains("include_ephemeral"))
+
+        let asked = KandevTaskListQuery(includeEphemeral: true).queryItems
+        #expect(value(asked, "include_ephemeral") == "true")
+    }
 }
 
 @Suite("KandevClient payloads")

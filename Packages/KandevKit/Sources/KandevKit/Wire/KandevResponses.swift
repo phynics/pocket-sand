@@ -82,6 +82,12 @@ public struct KandevTaskListQuery: Sendable, Equatable {
     public var archived: ArchiveMode
     /// Drops configuration sessions, which are not work you can act on.
     public var excludeConfig: Bool
+    /// Whether ephemeral tasks — quick chats — are included.
+    ///
+    /// The server leaves them out unless asked, which is how the first-party client
+    /// hides them. A list that shows them has to ask: the grouping is not enough on its
+    /// own, and a chat the server never sent cannot be grouped.
+    public var includeEphemeral: Bool
 
     public init(
         page: Int? = nil,
@@ -91,7 +97,8 @@ public struct KandevTaskListQuery: Sendable, Equatable {
         workflowID: String? = nil,
         repositoryID: String? = nil,
         archived: ArchiveMode = .active,
-        excludeConfig: Bool = true
+        excludeConfig: Bool = true,
+        includeEphemeral: Bool = false
     ) {
         self.page = page
         self.pageSize = pageSize
@@ -101,6 +108,7 @@ public struct KandevTaskListQuery: Sendable, Equatable {
         self.repositoryID = repositoryID
         self.archived = archived
         self.excludeConfig = excludeConfig
+        self.includeEphemeral = includeEphemeral
     }
 
     var queryItems: [URLQueryItem] {
@@ -119,6 +127,7 @@ public struct KandevTaskListQuery: Sendable, Equatable {
         if let repositoryID { items.append(URLQueryItem(name: "repository_id", value: repositoryID)) }
         items.append(contentsOf: archived.queryItems)
         if excludeConfig { items.append(URLQueryItem(name: "exclude_config", value: "true")) }
+        if includeEphemeral { items.append(URLQueryItem(name: "include_ephemeral", value: "true")) }
         return items
     }
 }
