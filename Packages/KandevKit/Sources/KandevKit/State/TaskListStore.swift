@@ -75,24 +75,22 @@ public final class TaskListStore {
     /// Whether the list is showing work taken off the board rather than on it.
     public private(set) var showingArchived = false
 
-    /// Which list the screen is showing.
-    public enum Layout: String, Sendable, CaseIterable, Identifiable {
-        /// Work filed in the workspace.
-        case tasks
-        /// Quick chats: tasks the server marks ephemeral because nothing was filed.
-        case chats
+    /// How the work rows are arranged.
+    public enum Listing: String, Sendable, CaseIterable, Identifiable {
+        /// A section per repository, which is how a workspace's work is usually shaped.
+        case byRepository
+        /// One list, each row saying which repository it belongs to.
+        case flat
 
         public var id: String { rawValue }
 
         public var title: String {
             switch self {
-            case .tasks: "Tasks"
-            case .chats: "Chats"
+            case .byRepository: "By project"
+            case .flat: "One list"
             }
         }
     }
-
-    public private(set) var layout: Layout = .tasks
 
     /// Newest activity first, which is the order the list is designed around.
     public var query: KandevTaskListQuery { listQuery(page: nil) }
@@ -108,20 +106,10 @@ public final class TaskListStore {
             pageSize: pageSize,
             sort: .updatedDesc,
             archived: showingArchived ? .onlyArchived : .active,
-            // Work and chats are two requests, not one page split in two: the server decides
-            // what is ephemeral, and this is how it is asked for one or the other.
-            onlyEphemeral: layout == .chats
+            // Chats belong on the board, not in the archive, and they are drawn as their own
+            // section of it. The server hides ephemeral tasks unless asked, and this is the ask.
+            includeEphemeral: !showingArchived
         )
-    }
-
-    /// Switches between the work and the chats.
-    ///
-    /// A refetch rather than a filter over what is held: the server decides what is ephemeral,
-    /// and the two sets are different requests.
-    public func setLayout(_ layout: Layout) async {
-        guard layout != self.layout else { return }
-        self.layout = layout
-        await refresh()
     }
 
     /// Switches between the board and the archive.
@@ -346,61 +334,70 @@ public final class TaskListStore {
         public var isChats: Bool = false
     }
 
-    /// The list as it is drawn: conversations first, then a section per repository.
+    /// The list as it is drawn: conversations first, then the work.
     ///
-    /// Chats first because they are the most recent thing someone was doing, and
-    /// because a chat is where a task that matters often starts. The order inside a
-    /// section is the server's, with subtasks under their parents, so grouping never
-    /// reshuffles what the server said was most recent.
-    ///
-    /// A workspace with one repository and no chats gets one untitled section, which
-    /// is the flat list this screen has always been.
-    public var sections: [Section] {
+    /// Chats are always their own section, whatever the arrangement: they are not filed anywhere,
+    /// so no arrangement of the work can hold them. A workspace whose work belongs to no project
+    /// still draws one untitled section, which is the flat list this screen has always been.
+    public func sections(_ listing: Listing = .byRepository) -> [Section] {
         var chats: [TaskRow] = []
-        var byRepository: [String: [TaskRow]] = [:]
-        var repositoryOrder: [String] = []
-        var unassigned: [TaskRow] = []
+        var work: [TaskRow] = []
 
         for row in rows {
             if row.isEphemeral {
                 chats.append(row)
-                continue
+            } else {
+                work.append(row)
             }
-            guard let repositoryID = row.repositoryID else {
-                unassigned.append(row)
-                continue
-            }
-            if byRepository[repositoryID] == nil { repositoryOrder.append(repositoryID) }
-            byRepository[repositoryID, default: []].append(row)
         }
 
         var sections: [Section] = []
         if !chats.isEmpty {
-            // Titled only when something else is on screen. In the chats tab it is the only
-            // section, and a heading over the only section is a label that says nothing.
-            let titled = !repositoryOrder.isEmpty || !unassigned.isEmpty
-            sections.append(Section(id: "chats", title: titled ? "Chats" : nil, rows: chats, isChats: true))
+            sections.append(Section(id: "chats", title: "Chats", rows: chats, isChats: true))
         }
-        for repositoryID in repositoryOrder {
-            sections.append(
-                Section(
-                    id: repositoryID,
-                    title: repositoryNames[repositoryID] ?? "Project",
-                    rows: byRepository[repositoryID] ?? []
+
+        switch listing {
+        case .flat:
+            if !work.isEmpty {
+                sections.append(Section(id: "all", title: nil, rows: work))
+            }
+
+        case .byRepository:
+            var byRepository: [String: [TaskRow]] = [:]
+            var repositoryOrder: [String] = []
+            var unassigned: [TaskRow] = []
+
+            for row in work {
+                guard let repositoryID = row.repositoryID else {
+                    unassigned.append(row)
+                    continue
+                }
+                if byRepository[repositoryID] == nil { repositoryOrder.append(repositoryID) }
+                byRepository[repositoryID, default: []].append(row)
+            }
+
+            for repositoryID in repositoryOrder {
+                sections.append(
+                    Section(
+                        id: repositoryID,
+                        title: repositoryNames[repositoryID] ?? "Project",
+                        rows: byRepository[repositoryID] ?? []
+                    )
                 )
-            )
-        }
-        if !unassigned.isEmpty {
-            // Titled only when something else is on screen: a heading over the only
-            // section is a label that says nothing.
-            sections.append(
-                Section(
-                    id: "none",
-                    title: sections.isEmpty ? nil : "No project",
-                    rows: unassigned
+            }
+            if !unassigned.isEmpty {
+                // Titled only when something else is on screen: a heading over the only section
+                // is a label that says nothing.
+                sections.append(
+                    Section(
+                        id: "none",
+                        title: repositoryOrder.isEmpty ? nil : "No project",
+                        rows: unassigned
+                    )
                 )
-            )
+            }
         }
+
         return sections
     }
 
@@ -410,9 +407,31 @@ public final class TaskListStore {
 
     private func rebuildRows() {
         let visible = tasks.filter(matchesTheToggle(_:))
-        let built = visible.map { TaskRow(task: $0, steps: catalogue.stepsByID) }
+        let built = visible.map { task -> TaskRow in
+            var row = TaskRow(task: task, steps: catalogue.stepsByID)
+            // Filled here because the repositories are read before the rows are built, and a row
+            // in a flat list has no section heading to say where it belongs.
+            row.repositoryName = row.repositoryID.flatMap { repositoryNames[$0] }
+            return row
+        }
         rows = Self.nested(built)
         unresolvedStepCount = rows.count { $0.stepName == nil }
+    }
+
+    /// What the list adds up to, for the one line above it.
+    public struct Stats: Sendable, Equatable {
+        /// Tasks that want a person, broadly: failed, asked a question, or at a gate.
+        public var wantYou: Int
+        /// Agents working on something nobody has to touch.
+        public var working: Int
+    }
+
+    /// The counts worth putting at the top of the list.
+    public var stats: Stats {
+        Stats(
+            wantYou: rows.count { $0.wantsAPerson },
+            working: rows.count { $0.isWorking && !$0.wantsAPerson }
+        )
     }
 
     /// Whether a task belongs in the set the toggle is showing.

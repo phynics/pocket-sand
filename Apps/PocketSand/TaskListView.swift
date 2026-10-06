@@ -19,6 +19,13 @@ struct TaskListView: View {
     @State private var path: [String] = []
     /// Watching this is how a list that was left open overnight notices the morning.
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// How the work rows are arranged, and whether the chats shelf is open.
+    ///
+    /// The reader's choices rather than the server's, so they live with the other view settings
+    /// and are remembered between launches.
+    @AppStorage("task-list-listing") private var listing: TaskListStore.Listing = .byRepository
+    @AppStorage("task-list-chats-expanded") private var chatsExpanded = false
     /// The create screen, with an identity of its own.
     ///
     /// A sheet's content comes from this one value rather than from a boolean beside a store. A
@@ -203,7 +210,8 @@ struct TaskListView: View {
             } label: {
                 TaskRowView(
                     row: row,
-                    isUnread: session.read.isUnread(taskID: row.id, lastActivity: row.lastActivity)
+                    isUnread: session.read.isUnread(taskID: row.id, lastActivity: row.lastActivity),
+                    showsRepository: listing == .flat
                 )
             }
             .buttonStyle(.plain)
@@ -290,7 +298,7 @@ struct TaskListView: View {
 
     private var list: some View {
         List {
-            layoutPicker
+            statsLine
 
             if store.showingArchived {
                 Section {
@@ -307,18 +315,22 @@ struct TaskListView: View {
                 Section { FailureNote(message: message) }
             }
 
-            // Grouped: conversations first, then a section per project. A workspace
-            // with one repository and no chats draws one untitled section, which is
-            // the flat list this screen has always been.
-            ForEach(store.sections) { section in
-                Section {
-                    rows(section.rows)
-                } header: {
-                    if let title = section.title {
-                        Text(title)
-                            .font(Theme.Face.chrome(.footnote))
-                            .foregroundStyle(Theme.muted)
-                            .textCase(nil)
+            // Chats first, as a shelf that can be closed; then the work, arranged the way the
+            // reader asked for. A workspace whose work belongs to no project draws one untitled
+            // section, which is the flat list this screen has always been.
+            ForEach(store.sections(listing)) { section in
+                if section.isChats {
+                    chatsSection(section)
+                } else {
+                    Section {
+                        rows(section.rows)
+                    } header: {
+                        if let title = section.title {
+                            Text(title)
+                                .font(Theme.Face.chrome(.footnote))
+                                .foregroundStyle(Theme.muted)
+                                .textCase(nil)
+                        }
                     }
                 }
             }
@@ -341,71 +353,99 @@ struct TaskListView: View {
             if store.phase == .loading && store.rows.isEmpty {
                 ProgressView().controlSize(.small)
             } else if store.phase == .loaded && store.rows.isEmpty {
-                EmptyNote(title: emptyTitle, detail: emptyDetail)
-                    .padding(.horizontal, Theme.Space.loose)
-                    .frame(maxWidth: Theme.measure, alignment: .leading)
+                EmptyNote(
+                    title: store.showingArchived ? "Nothing archived" : "No open tasks",
+                    detail: store.showingArchived
+                        ? "Tasks you archive will be here, and can come back."
+                        : "This workspace has nothing on the board. Create a task and it will show up here."
+                )
+                .padding(.horizontal, Theme.Space.loose)
+                .frame(maxWidth: Theme.measure, alignment: .leading)
             }
         }
         .animation(.default, value: store.rows)
     }
 
-    /// Tasks or chats.
+    /// What the list adds up to, in one line.
     ///
-    /// One segmented control, because a chat is a task on the server and the difference is
-    /// only whether anything was filed. A separate screen would be a second list to keep in
-    /// step with this one.
-    private var layoutPicker: some View {
-        Picker(
-            "List",
-            selection: Binding(
-                get: { store.layout },
-                set: { layout in Task { await store.setLayout(layout) } }
-            )
-        ) {
-            ForEach(TaskListStore.Layout.allCases) { layout in
-                Text(layout.title).tag(layout)
+    /// The list's question is "which of these needs me", so the tasks that need a person are
+    /// counted first and in ink, and the rest is context. Shown only when there is something to
+    /// say: a line reading "0 want you" spends a row saying nothing.
+    @ViewBuilder private var statsLine: some View {
+        let stats = store.stats
+        if stats.wantYou > 0 || stats.working > 0 {
+            Text(statsLineText(stats))
+                .font(Theme.Face.chrome(.footnote))
+                .listRowInsets(EdgeInsets(
+                    top: Theme.Space.snug,
+                    leading: Theme.Space.loose,
+                    bottom: Theme.Space.base,
+                    trailing: Theme.Space.loose
+                ))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+        }
+    }
+
+    private func statsLineText(_ stats: TaskListStore.Stats) -> AttributedString {
+        var line = AttributedString()
+        if stats.wantYou > 0 {
+            var wants = AttributedString("\(stats.wantYou) want you")
+            wants.font = Theme.Face.chrome(.footnote, weight: .medium)
+            wants.foregroundColor = Theme.ink
+            line += wants
+        }
+        if stats.working > 0 {
+            let leading = stats.wantYou > 0 ? " · " : ""
+            var work = AttributedString("\(leading)\(stats.working) working")
+            work.foregroundColor = Theme.muted
+            line += work
+        }
+        return line
+    }
+
+    /// The chats shelf: a heading that opens and closes them, and the chats themselves.
+    ///
+    /// Closed to begin with, because the work is what this screen is for and a chat is a scratch
+    /// conversation — but the count is on the heading, so nothing is hidden silently.
+    @ViewBuilder private func chatsSection(_ section: TaskListStore.Section) -> some View {
+        Section {
+            if chatsExpanded {
+                rows(section.rows)
             }
+        } header: {
+            Button {
+                withAnimation(Motion.fold(reduceMotion: reduceMotion)) { chatsExpanded.toggle() }
+            } label: {
+                HStack(spacing: Theme.Space.snug) {
+                    Image(systemName: chatsExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text("Chats")
+                    Text("\(section.rows.count)")
+                        .monospacedDigit()
+                    Spacer(minLength: 0)
+                }
+                .font(Theme.Face.chrome(.footnote))
+                .foregroundStyle(Theme.muted)
+                .textCase(nil)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Chats, \(section.rows.count)")
+            .accessibilityHint(chatsExpanded ? "Closes the chats" : "Opens the chats")
         }
-        .pickerStyle(.segmented)
-        .listRowInsets(EdgeInsets(
-            top: Theme.Space.snug,
-            leading: Theme.Space.loose,
-            bottom: Theme.Space.base,
-            trailing: Theme.Space.loose
-        ))
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
-        .accessibilityLabel("Tasks or chats")
-    }
-
-    private var emptyTitle: String {
-        if store.layout == .chats { return "No chats" }
-        return store.showingArchived ? "Nothing archived" : "No open tasks"
-    }
-
-    private var emptyDetail: String {
-        if store.layout == .chats {
-            return "Start a chat and it will be here. A chat is a conversation rather than work on the board."
-        }
-        return store.showingArchived
-            ? "Tasks you archive will be here, and can come back."
-            : "This workspace has nothing on the board. Create a task and it will show up here."
     }
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
-        // Nothing to archive in the chats list: a chat is a conversation, and the archive is
-        // for work that left the board.
-        if store.layout == .tasks {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    Task { await store.setShowingArchived(!store.showingArchived) }
-                } label: {
-                    if store.showingArchived {
-                        Label("Show the board", systemImage: "rectangle.stack")
-                    } else {
-                        Label("Show archived", systemImage: "archivebox")
-                    }
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                Task { await store.setShowingArchived(!store.showingArchived) }
+            } label: {
+                if store.showingArchived {
+                    Label("Show the board", systemImage: "rectangle.stack")
+                } else {
+                    Label("Show archived", systemImage: "archivebox")
                 }
             }
         }
@@ -415,6 +455,13 @@ struct TaskListView: View {
         // here is about the list, and the servers live behind the disclosure.
         ToolbarItem(placement: .primaryAction) {
             Menu {
+                Section("List") {
+                    Picker("List", selection: $listing) {
+                        ForEach(TaskListStore.Listing.allCases) { candidate in
+                            Text(candidate.title).tag(candidate)
+                        }
+                    }
+                }
                 Section("Server") {
                     ForEach(servers.bookmarks) { bookmark in
                         Button {
@@ -444,9 +491,7 @@ struct TaskListView: View {
     /// reads as stray punctuation.
     private var newTaskButton: some View {
         Button {
-            // The tab says which thing this screen is for, so the button starts that thing: a
-            // chat from the chats list, a task from the board.
-            openCreateSheet(mode: store.layout == .chats ? .chat : .task)
+            openCreateSheet()
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 20, weight: .medium))

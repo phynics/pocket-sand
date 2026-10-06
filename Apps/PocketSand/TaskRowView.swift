@@ -14,13 +14,20 @@ struct TaskRowView: View {
     let row: TaskRow
     /// Whether anything has happened since this task was last opened.
     var isUnread = false
+    /// Whether the row has to say which repository it belongs to.
+    ///
+    /// It does in a flat list, where no section heading says it for the row.
+    var showsRepository = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.hair) {
-            // The whole width is the title's now. It is the content of this screen —
-            // the question the list answers is "which of these needs me", and that is
-            // answered by reading a sentence, so a column of times beside it was
-            // trading reading room for a number.
+            if showsRepository, let repository = row.repositoryName {
+                Text(repository)
+                    .font(Theme.Face.chrome(.caption2))
+                    .foregroundStyle(Theme.muted)
+                    .lineLimit(1)
+            }
+
             Text(row.title)
                 .font(Theme.Face.prose(.body))
                 .foregroundStyle(Theme.ink)
@@ -28,16 +35,15 @@ struct TaskRowView: View {
                 // worse than a slightly taller row.
                 .lineLimit(3)
 
-            HStack(spacing: Theme.Space.snug) {
-                if let step = row.stepName {
-                    Text(step)
-                        .font(Theme.Face.chrome(.footnote))
-                        .foregroundStyle(Theme.muted)
-                }
+            HStack(alignment: .firstTextBaseline, spacing: Theme.Space.snug) {
+                Text(fact)
+                    .font(Theme.Face.chrome(.footnote, weight: wantsAPerson ? .medium : .regular))
+                    .foregroundStyle(wantsAPerson ? Theme.ink : Theme.muted)
+                    .lineLimit(1)
                 Spacer(minLength: Theme.Space.snug)
                 if let activity = row.lastActivity {
                     // Still right-aligned, so the times stay comparable down the page
-                    // without the eye jumping — but on the step's line, under the
+                    // without the eye jumping — but on the fact's line, under the
                     // title's full width rather than beside it.
                     Text(CompactAge.label(for: activity))
                         .font(Theme.Face.machine(.caption))
@@ -66,6 +72,25 @@ struct TaskRowView: View {
 
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
+    }
+
+    /// What the row says under its title: what it wants, or where it sits.
+    ///
+    /// State first, on purpose. The list answers "which of these needs me", and a step name says
+    /// where the work is rather than what it wants — so a task that wants a person says so, and a
+    /// task that wants nobody says where it is.
+    private var fact: String {
+        if row.isFailed { return "Failed" }
+        if row.isAwaitingAnswer { return "Asked you a question" }
+        if isUnread { return "New since you looked" }
+        if row.needsAttention { return "Waiting for you" }
+        if row.isWorking { return row.stepName.map { "Working · \($0)" } ?? "Working" }
+        return row.stepName ?? "No step"
+    }
+
+    /// Whether the fact is about the reader rather than about the work.
+    private var wantsAPerson: Bool {
+        row.wantsAPerson || isUnread
     }
 
     /// How far the content sits in from the spine.

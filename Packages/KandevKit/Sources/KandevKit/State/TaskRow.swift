@@ -47,8 +47,21 @@ public struct TaskRow: Sendable, Identifiable, Equatable, Hashable {
     public var lastActivity: Date?
     /// The repository this task belongs to, for grouping the list by project.
     public var repositoryID: String?
+    /// The repository's name, for a row that has to say where it belongs.
+    ///
+    /// Filled once the repositories have been read: in a flat list the row carries its project's
+    /// name because there is no section heading to say it.
+    public var repositoryName: String?
     /// Whether this row is a conversation rather than work.
     public var isEphemeral: Bool
+
+    /// Whether this task wants a person rather than an agent.
+    ///
+    /// Broad on purpose: a failure, a question, and a gate all want the same person, and the
+    /// list's one job is to put them where the eye lands first.
+    public var wantsAPerson: Bool {
+        isFailed || isAwaitingAnswer || needsAttention
+    }
 
     public init(
         id: String,
@@ -63,6 +76,7 @@ public struct TaskRow: Sendable, Identifiable, Equatable, Hashable {
         depth: Int = 0,
         lastActivity: Date?,
         repositoryID: String? = nil,
+        repositoryName: String? = nil,
         isEphemeral: Bool = false
     ) {
         self.id = id
@@ -77,6 +91,7 @@ public struct TaskRow: Sendable, Identifiable, Equatable, Hashable {
         self.depth = depth
         self.lastActivity = lastActivity
         self.repositoryID = repositoryID
+        self.repositoryName = repositoryName
         self.isEphemeral = isEphemeral
     }
 }

@@ -197,43 +197,29 @@ struct TaskListStoreTests {
         #expect(pages == [1, 2])
     }
 
-    /// The board is work: the server leaves ephemeral tasks out of it unless asked, and this
-    /// client does not ask — the chats list asks for them instead.
-    @Test("the board does not ask for chats")
-    func boardExcludesChats() async {
+    /// The shelf needs the chats, so the board's own request asks for them: the server leaves
+    /// ephemeral tasks out unless asked.
+    @Test("the board asks for the chats it shows")
+    func boardAsksForChats() async {
         let (store, source) = await loadedStore(tasks: [makeTask(id: "t1", title: "One", stepID: "step-work")])
 
-        #expect(store.query.includeEphemeral == false)
-        #expect(store.query.onlyEphemeral == false)
+        #expect(store.query.includeEphemeral)
         let queries = await source.requestedQueries
-        #expect(queries.last?.includeEphemeral == false)
-        #expect(queries.last?.onlyEphemeral == false)
+        #expect(queries.last?.includeEphemeral == true)
     }
 
-    /// The two lists are two requests. A client that split one page into two would be guessing
-    /// at a page boundary, and the server is the one that decides what is ephemeral.
-    @Test("switching to chats asks the server for a different list")
-    func switchingToChats() async {
-        let (store, source) = await loadedStore(tasks: [
-            makeTask(id: "t1", title: "Work", stepID: "step-work"),
+    /// The stats are the list's answer to "which of these needs me", so they count the tasks that
+    /// want a person first, and then the agents working on something nobody has to touch.
+    @Test("the stats count who wants a person and who is working for nobody")
+    func statsCount() async {
+        let (store, _) = await loadedStore(tasks: [
+            makeTask(id: "t1", title: "Waiting", stepID: "step-work", state: "REVIEW", sessionState: "WAITING_FOR_INPUT"),
+            makeTask(id: "t2", title: "Running", stepID: "step-work", sessionState: "RUNNING"),
+            makeTask(id: "t3", title: "Quiet", stepID: "step-work", sessionState: "STARTING"),
         ])
-        #expect(store.layout == .tasks)
-        var queries = await source.requestedQueries
-        #expect(queries.last?.onlyEphemeral == false)
 
-        await source.setTasks([makeTask(id: "c1", title: "A chat", stepID: nil, ephemeral: true)])
-        await store.setLayout(.chats)
-
-        #expect(store.layout == .chats)
-        #expect(store.rows.map(\.id) == ["c1"])
-        queries = await source.requestedQueries
-        #expect(queries.last?.onlyEphemeral == true)
-
-        // And back, so the board is not the chats list left behind.
-        await source.setTasks([makeTask(id: "t1", title: "Work", stepID: "step-work")])
-        await store.setLayout(.tasks)
-        queries = await source.requestedQueries
-        #expect(queries.last?.onlyEphemeral == false)
+        #expect(store.stats.wantYou == 1)
+        #expect(store.stats.working == 1)
     }
 
     /// The next page has to be the same list as the page it appends to. It used to be
@@ -639,6 +625,25 @@ struct TaskAttentionTests {
         #expect(row(state: "CREATED", sessionState: nil).needsAttention == false)
         #expect(row(state: "IN_PROGRESS", sessionState: "STARTING").needsAttention == false)
     }
+
+    /// Broad on purpose: a failure, a question, and a gate all want the same person, which is what
+    /// the list's one line counts.
+    @Test("anything waiting on a person wants one")
+    func anythingWaitingWantsAPerson() {
+        #expect(row(state: "REVIEW", sessionState: "WAITING_FOR_INPUT").wantsAPerson)
+        #expect(row(state: "FAILED", sessionState: nil).wantsAPerson)
+        #expect(row(state: "IN_PROGRESS", sessionState: "RUNNING").wantsAPerson == false)
+        #expect(
+            TaskRow(
+                id: "t1",
+                title: "A task",
+                stepName: nil,
+                isWorking: false,
+                isAwaitingAnswer: true,
+                lastActivity: nil
+            ).wantsAPerson
+        )
+    }
 }
 
 @Suite("Subtasks")
@@ -760,11 +765,40 @@ struct TaskListGroupingTests {
 
         await store.refresh()
 
-        #expect(store.sections.map(\.id) == ["chats", "r2", "r1"])
-        #expect(store.sections.map(\.title) == ["Chats", "kandev", "pocket-sand"])
-        #expect(store.sections[0].isChats)
-        #expect(store.sections[1].rows.map(\.id) == ["t1", "t5"], "the server's order, not ours")
-        #expect(store.sections[2].rows.map(\.id) == ["t3", "t4"])
+        let sections = store.sections(.byRepository)
+        #expect(sections.map(\.id) == ["chats", "r2", "r1"])
+        #expect(sections.map(\.title) == ["Chats", "kandev", "pocket-sand"])
+        #expect(sections[0].isChats)
+        #expect(sections[1].rows.map(\.id) == ["t1", "t5"], "the server's order, not ours")
+        #expect(sections[2].rows.map(\.id) == ["t3", "t4"])
+    }
+
+    /// One list, with the project on the row instead of in a heading. The chats keep their own
+    /// section: they are not filed anywhere, so no arrangement of the work can hold them.
+    @Test("the flat listing is one section, and chats stay apart")
+    func flatListing() async {
+        let (store, source) = await store()
+        await source.setTasks([
+            task("t1", "Fix the parser", repository: "r2"),
+            task("t2", "Ask about retries", ephemeral: true),
+            task("t3", "Nested work", repository: "r1"),
+        ])
+        await store.refresh()
+
+        let sections = store.sections(.flat)
+        #expect(sections.map(\.id) == ["chats", "all"])
+        #expect(sections[1].title == nil)
+        #expect(sections[1].rows.map(\.id) == ["t1", "t3"], "the server's order")
+    }
+
+    /// A flat row has to say which project it belongs to, because no heading says it for the row.
+    @Test("a row carries its repository's name")
+    func rowNamesItsRepository() async {
+        let (store, source) = await store()
+        await source.setTasks([task("t1", "Fix the parser", repository: "r2")])
+        await store.refresh()
+
+        #expect(store.rows.first?.repositoryName == "kandev")
     }
 
     @Test("a list with nothing to group by is a list, not a section with a heading")
@@ -774,9 +808,9 @@ struct TaskListGroupingTests {
 
         await store.refresh()
 
-        #expect(store.sections.count == 1)
-        #expect(store.sections[0].title == nil, "a heading over the only section says nothing")
-        #expect(store.sections[0].rows.map(\.id) == ["t1", "t2"])
+        #expect(store.sections(.byRepository).count == 1)
+        #expect(store.sections(.byRepository)[0].title == nil, "a heading over the only section says nothing")
+        #expect(store.sections(.byRepository)[0].rows.map(\.id) == ["t1", "t2"])
     }
 
     @Test("tasks with no repository are kept, and named when something else is there")
@@ -789,9 +823,9 @@ struct TaskListGroupingTests {
 
         await store.refresh()
 
-        #expect(store.sections.map(\.id) == ["r1", "none"])
-        #expect(store.sections.last?.title == "No project")
-        #expect(store.sections.last?.rows.map(\.id) == ["t2"])
+        #expect(store.sections(.byRepository).map(\.id) == ["r1", "none"])
+        #expect(store.sections(.byRepository).last?.title == "No project")
+        #expect(store.sections(.byRepository).last?.rows.map(\.id) == ["t2"])
     }
 
     @Test("a subtask stays under its parent, inside its own section")
@@ -805,7 +839,7 @@ struct TaskListGroupingTests {
 
         await store.refresh()
 
-        let pocket = store.sections.first { $0.id == "r1" }
+        let pocket = store.sections(.byRepository).first { $0.id == "r1" }
         #expect(pocket?.rows.map(\.id) == ["t1", "t2"])
         #expect(pocket?.rows.map(\.depth) == [0, 1])
     }
@@ -818,6 +852,6 @@ struct TaskListGroupingTests {
 
         await store.refresh()
 
-        #expect(store.sections.first?.title == "/dev/x")
+        #expect(store.sections(.byRepository).first?.title == "/dev/x")
     }
 }
