@@ -11,6 +11,14 @@ options:
 packages:
   KandevKit:
     path: Packages/KandevKit
+  # An agent answers in markdown and arrives as markdown, and MarkdownUI draws the whole of it as
+  # real SwiftUI views: headings, nested lists, fenced code, tables, thematic breaks. A single
+  # `AttributedString`-backed `Text` carries bold and links but cannot express a table, which is
+  # the case that decides it. View code only — it belongs to the app targets and never to
+  # KandevKit, where the wire and the state live and nothing draws.
+  MarkdownUI:
+    url: https://github.com/gonzalezreal/swift-markdown-ui
+    from: "2.4.0"
 
 settings:
   base:
@@ -32,6 +40,8 @@ targets:
     dependencies:
       - package: KandevKit
         product: KandevKit
+      - package: MarkdownUI
+        product: MarkdownUI
     settings:
       base:
         INFOPLIST_FILE: Apps/iOS/Info.plist
@@ -51,6 +61,8 @@ targets:
     dependencies:
       - package: KandevKit
         product: KandevKit
+      - package: MarkdownUI
+        product: MarkdownUI
     settings:
       base:
         INFOPLIST_FILE: Apps/macOS/Info.plist

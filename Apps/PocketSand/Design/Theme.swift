@@ -88,27 +88,10 @@ enum Theme {
         static func chrome(_ style: Font.TextStyle, weight: Font.Weight = .regular) -> Font {
             .system(style, design: .default, weight: weight)
         }
-
-        /// For the agent's own prose.
-        ///
-        /// Sans, and a size down from a person's. An agent writes at length — a reply is
-        /// often a page — and a serif at body size made its answers as heavy on the page
-        /// as the questions they answered. Sans is narrower, so a line holds more of it,
-        /// and the size step is what keeps the question the loudest thing in the
-        /// exchange.
-        static func agent(
-            _ style: Font.TextStyle = .callout,
-            weight: Font.Weight = .regular
-        ) -> Font {
-            .system(style, design: .default, weight: weight)
-        }
     }
 
     /// Body prose wants more leading in a serif than a sans.
     static let proseLineSpacing: CGFloat = 4
-
-    /// And less again at a smaller size.
-    static let agentLineSpacing: CGFloat = 2
 }
 
 // MARK: - Building blocks

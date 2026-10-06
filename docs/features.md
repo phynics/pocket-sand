@@ -87,7 +87,8 @@ this app does not · **·** out of scope on purpose.
 | Live conversation (ordered operation log) | ✅ | ✅ | ✅ | `session.conversation.subscribe`, merged by message id, with the revision gap guard. |
 | The exchange around a turn | ✅ | ✅ | ✅ | Tap any row: the prompt, the steps, the reply, and the reply before it. |
 | Turn grouping and durations | ✅ | ✅ | ✅ | One summary control per turn, not per run. |
-| Markdown, code blocks, Mermaid, KaTeX | n/a | ✅ | — | The agent's output *is* markdown and the app draws the characters. Its own preamble arrives as literal `##` and `-`. |
+| Markdown, code blocks | n/a | ✅ | ✅ | An agent's answer is rendered as the markdown it was written in — headings, lists, fenced code, tables — by MarkdownUI, in this app's own colours and type. |
+| Mermaid, KaTeX | n/a | ✅ | — | Diagrams and maths. The agent's own preamble still arrives as literal `##` and `-`; that is prose the server wrote around a turn, not an answer. |
 | Files, diffs, file review, commits | ✅ | ✅ | — | `workspace.files.*`, `session.file_review.*`, `session.git.*`, `file-diff`. |
 | Todos panel | ✅ | ✅ | — | `session.todos_updated`. |
 

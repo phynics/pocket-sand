@@ -88,6 +88,13 @@ struct TranscriptTurnView: View {
     let onShowSteps: (TurnSheetContent) -> Void
     /// Loads a shell call's output for a row the reader opened.
     var loadOutput: ((String) async -> KandevShellOutput?)?
+
+    /// Whether this row is part of the turn being written.
+    ///
+    /// Only the live reply can still be growing, and only a growing reply needs its markdown
+    /// rendering throttled.
+    var isStreaming = false
+
     /// What to do when the reader answers a question, and when they skip the request.
     var onAnswer: ((KandevClarification, KandevClarificationAnswer) -> Void)?
     var onReject: ((String) -> Void)?
@@ -157,6 +164,7 @@ struct TranscriptTurnView: View {
                 isExpanded: expandedRows.contains(row.id),
                 onToggle: { toggle(row.id) },
                 loadOutput: loadOutput,
+                isStreaming: isWorking,
                 onAnswer: onAnswer,
                 onReject: onReject
             )
@@ -330,18 +338,26 @@ struct LiveStepView: View {
                 .italic(row.kind == .thinking)
                 .foregroundStyle(row.kind == .thinking ? Theme.muted : Theme.ink)
                 .lineSpacing(Theme.proseLineSpacing)
-                // A thought is bounded by its content, a command by its lines. The tail
-                // of a long command is pipes and flags — the beginning is the part that
-                // says what it is, and eight wrapped lines of the rest is a wall where
-                // the paragraph should be.
-                .lineLimit(row.kind == .thinking ? nil : Self.commandLines)
+                // Three lines, and the room for them held whether or not the text fills it. This
+                // is the one row that grows as it is written, and a row that grows moves
+                // everything under it — the summary line below, and the scroll that is trying to
+                // follow it. Reserving the space is what stops the rest of the screen twitching
+                // once a second.
+                .lineLimit(Self.lines, reservesSpace: true)
+                // A thought keeps its end, because the newest words are the point of showing it;
+                // a command keeps its beginning, because that is the part that says what it is.
+                .truncationMode(row.kind == .thinking ? .head : .tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Working: \(text)")
     }
 
-    private static let commandLines = 3
+    /// The height every live step occupies, in lines.
+    ///
+    /// Three, and the same three for a thought and a command: it is one slot in the transcript,
+    /// and a slot whose height depends on what an agent is thinking moves the page under it.
+    private static let lines = 3
 
     /// Two or three lines in the conversation. The sheet is where a thought gets a
     /// paragraph; here it is the one line the fold left open, and a paragraph in the
@@ -531,6 +547,8 @@ struct TranscriptRowView: View {
     /// Nil where there is nowhere to fetch from: a preview, or a caller that did not wire a
     /// source. The body is not in the message, so this is the only way to it.
     var loadOutput: ((String) async -> KandevShellOutput?)?
+    /// Whether this text is still being written, which the markdown renderer needs to know.
+    var isStreaming = false
     /// What to do when the reader answers a question, and when they skip the request.
     var onAnswer: ((KandevClarification, KandevClarificationAnswer) -> Void)?
     var onReject: ((String) -> Void)?
@@ -582,10 +600,17 @@ struct TranscriptRowView: View {
     /// is what you came to the exchange for; the answer is long, and it should not
     /// shout over it.
     private var prose: some View {
+        // An agent answers in markdown, and this is the one place the app draws it as what it was
+        // written in. The question keeps the plain path: it is a sentence in a band, and a heading
+        // or a table in somebody's question would be a surprise rather than a courtesy.
+        if row.kind == .reply {
+            return AnyView(MarkdownText(text: row.text, isStreaming: isStreaming))
+        }
+
         let text = Text(row.text)
-            .font(row.kind == .reply ? Theme.Face.agent() : Theme.Face.prose(.body))
+            .font(Theme.Face.prose(.body))
             .foregroundStyle(Theme.ink)
-            .lineSpacing(row.kind == .reply ? Theme.agentLineSpacing : Theme.proseLineSpacing)
+            .lineSpacing(Theme.proseLineSpacing)
 
         guard let lines = prosePreviewLines, !isExpanded, let onToggle else {
             return AnyView(text.textSelection(.enabled))
