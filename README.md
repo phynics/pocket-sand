@@ -1,5 +1,9 @@
 # Pocket Sand
 
+<p align="center">
+  <img src="assets/icon.png" alt="Pocket Sand" width="128" height="128">
+</p>
+
 A native iOS and macOS client for a [Kandev](https://github.com/kdlbs/kandev)
 server, using the interaction model of
 [T3 Code](https://github.com/pingdotgg/t3code).
