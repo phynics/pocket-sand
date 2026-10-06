@@ -111,4 +111,80 @@ struct LiveServerTests {
 
         await client.close()
     }
+
+    /// Walking a conversation backwards with the cursor the server hands out.
+    ///
+    /// The transcript holds one page and opens at its tail, so this is the only way to the rest of
+    /// it — and the cursor is the part that has to be right. The server answers with the oldest id
+    /// in the page, and that id is what the next request asks to come before; an ISO timestamp in
+    /// that field is refused outright, which is how the field was identified in the first place.
+    ///
+    /// Two claims, because they fail differently. Paging *k* times has to give the same window as
+    /// reading one page of *k* times the size — that is the cursor being used correctly. And a walk
+    /// to the end has to terminate, without repeating a message — that is `hasMore` and the cursor
+    /// staying in step, and the failure mode is an "Earlier messages" row that never goes away.
+    @Test("paging backwards gives the same window as one big page, and walks to the end")
+    func pagesBackThroughAConversation() async throws {
+        let client = client
+        try await client.connect()
+        defer { Task { await client.close() } }
+
+        let workspace = try #require(try await client.workspaces().first)
+        let tasks = try await client.tasks(
+            workspaceID: workspace.id,
+            query: .init(pageSize: 100, includeEphemeral: true)
+        )
+
+        // The conversation with the most in it, so the walk really has more than one page in it.
+        // `limit` here is a hint, not a demand: the server caps a page, so this is a floor.
+        var longest: (sessionID: String, count: Int)?
+        for task in tasks.tasks {
+            guard let sessionID = task.primarySessionID else { continue }
+            let page = try await client.messages(sessionID: sessionID, limit: 100)
+            if page.messages.count > (longest?.count ?? 0) {
+                longest = (sessionID, page.messages.count)
+            }
+        }
+        let session = try #require(longest, "expected at least one session on the server")
+        try #require(session.count > 20, "expected a conversation longer than one page to page through")
+
+        let small = 5
+        let pages = 4
+
+        // Four pages of five, oldest at the front.
+        var walked: [KandevMessage] = []
+        var cursor: String?
+        for _ in 0..<pages {
+            let page = try await client.messages(sessionID: session.sessionID, limit: small, before: cursor)
+            walked.insert(contentsOf: page.messages, at: 0)
+            // The store falls back to the oldest message on screen when a page answers without a
+            // cursor. It has never had to, and this is where that would show.
+            cursor = try #require(page.cursor, "every page should name the id to go before next")
+        }
+
+        let onePage = try await client.messages(sessionID: session.sessionID, limit: small * pages)
+        #expect(walked.map(\.id) == onePage.messages.map(\.id))
+
+        // And the same window is in reading order, which is what the client's reversal is for: the
+        // wire hands the newest page back first, and a page that came back descending would show.
+        let stamps = walked.compactMap { $0.createdAt?.date }
+        #expect(stamps == stamps.sorted(), "expected oldest-first within a page")
+
+        // Now all the way to the beginning, watching for a walk that repeats itself or never ends.
+        // A fresh set and a fresh cursor: this is the whole conversation again, not a continuation
+        // of the four pages above, and seeding it with those would report them as repeats.
+        var seen = Set<String>()
+        cursor = nil
+        var steps = 0
+        while steps < 500 {
+            let page = try await client.messages(sessionID: session.sessionID, limit: small, before: cursor)
+            let fresh = page.messages.filter { seen.insert($0.id).inserted }
+            #expect(fresh.count == page.messages.count, "a page repeated messages already read")
+            cursor = page.cursor ?? page.messages.first?.id
+            steps += 1
+            if !page.hasMore { break }
+        }
+        #expect(steps < 500, "the walk never reached the beginning")
+        print("PAGED \(seen.count) messages in \(steps) pages of \(small)")
+    }
 }

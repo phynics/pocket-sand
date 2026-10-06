@@ -222,7 +222,16 @@ struct TaskDetailView: View {
                 // Held across the load, because `transcript.turns` changes the moment the page
                 // lands and the restore has to know which message to aim at.
                 olderAnchor = transcript.turns.first?.id
-                Task { await conversation.loadOlder() }
+                Task {
+                    // A page that did not arrive leaves the anchor armed, and the next change to the
+                    // transcript — a live message, which has nothing to do with this tap — would
+                    // then scroll the reader to the top of the conversation. Disarm it. A page that
+                    // *did* arrive has already consumed it, in the change above.
+                    guard await conversation.loadOlder() else {
+                        olderAnchor = nil
+                        return
+                    }
+                }
             } label: {
                 HStack(spacing: Theme.Space.base) {
                     Rule()
