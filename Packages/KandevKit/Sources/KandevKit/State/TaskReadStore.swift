@@ -22,13 +22,18 @@ public final class TaskReadStore {
         self.seenAt = Self.load(from: defaults)
     }
 
-    /// Whether the task has done anything since it was last opened.
+    /// Whether the task has anything in it that has not been read.
     ///
-    /// A task nobody has opened is **not** unread: there is no baseline for anything to have
-    /// passed, which is the server's own rule for a session's first visit. A task with no
-    /// reported activity is not unread either — there is nothing to have missed.
+    /// A task nobody has opened is unread: none of it has been looked at, which is the same thing
+    /// as activity arriving after the last look. A task with no activity at all is not unread —
+    /// there is nothing to have missed.
+    ///
+    /// The consequence worth knowing: on a device that has never opened a list, every task in it
+    /// starts unread and goes quiet as it is read. A task that arrives later — created here or
+    /// elsewhere — is unread from its first appearance.
     public func isUnread(taskID: String, lastActivity: Date?) -> Bool {
-        guard let lastActivity, let seen = seenAt[taskID] else { return false }
+        guard let lastActivity else { return false }
+        guard let seen = seenAt[taskID] else { return true }
         return lastActivity > seen
     }
 

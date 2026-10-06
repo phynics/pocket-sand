@@ -195,6 +195,17 @@ struct TaskListView: View {
         )
     }
 
+    /// A section's rows, with what has not been read first.
+    ///
+    /// The read state is this client's, so the order it implies is too — the server has never
+    /// heard of it. Only work is reordered: a section's own heading still says what it says, and
+    /// the blocks move whole so the hierarchy survives.
+    private func arranged(_ section: TaskListStore.Section) -> [TaskRow] {
+        section.rows.unreadFirst { row in
+            session.read.isUnread(taskID: row.id, lastActivity: row.lastActivity)
+        }
+    }
+
     /// The rows of one section.
     ///
     /// Extracted so the grouping above does not have to repeat it, and so the
@@ -327,7 +338,7 @@ struct TaskListView: View {
                     chatsSection(section)
                 } else {
                     Section {
-                        rows(section.rows)
+                        rows(arranged(section))
                     } header: {
                         if let title = section.title {
                             Text(title)
@@ -377,7 +388,7 @@ struct TaskListView: View {
     @ViewBuilder private func chatsSection(_ section: TaskListStore.Section) -> some View {
         Section {
             if chatsExpanded {
-                rows(section.rows)
+                rows(arranged(section))
             }
         } header: {
             Button {

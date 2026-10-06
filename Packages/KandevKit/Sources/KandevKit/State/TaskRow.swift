@@ -110,8 +110,7 @@ extension KandevTask {
 
 extension TaskRow {
     /// Builds a row from a task and the steps known so far.
-    init(task: KandevTask, steps: [String: KandevWorkflowStep]) {
-        let step = task.workflowStepID.flatMap { steps[$0] }
+    init(task: KandevTask, steps: [String: KandevWorkflowStep]) {        let step = task.workflowStepID.flatMap { steps[$0] }
         self.init(
             id: task.id,
             title: task.title,
@@ -129,5 +128,31 @@ extension TaskRow {
             repositoryID: task.repositories?.first?.repositoryID,
             isEphemeral: task.isEphemeral == true
         )
+    }
+}
+
+extension Array where Element == TaskRow {
+    /// The rows, with the ones that want reading first.
+    ///
+    /// A **block** moves as one — a task and the rows indented under it — because sorting rows
+    /// would put a subtask above its own parent, and the indent column spends its whole length
+    /// saying that cannot happen. Within each block the server's order stands untouched, and it
+    /// also decides between two rows that agree about being read: read state says which group
+    /// comes first, and "most recent first" still says what comes first inside it.
+    ///
+    /// A stable partition rather than a sort, so nothing moves that did not have to.
+    public func unreadFirst(_ isUnread: (TaskRow) -> Bool) -> [TaskRow] {
+        var blocks: [[TaskRow]] = []
+        for row in self {
+            if row.depth == 0 || blocks.isEmpty {
+                blocks.append([row])
+            } else {
+                blocks[blocks.count - 1].append(row)
+            }
+        }
+
+        let unread = blocks.filter { $0.first.map(isUnread) == true }
+        let read = blocks.filter { $0.first.map(isUnread) != true }
+        return (unread + read).flatMap { $0 }
     }
 }

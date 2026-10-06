@@ -12,13 +12,14 @@ struct TaskReadStoreTests {
         UserDefaults(suiteName: "task-read-\(UUID().uuidString)")!
     }
 
-    /// A task nobody has opened is not unread: there is no baseline for anything to have
-    /// passed, which is the server's own rule for a session's first visit.
-    @Test("a task nobody has opened is not unread")
-    func neverOpenedIsNotUnread() {
+    /// A task nobody has opened is unread: none of it has been looked at, which is the same thing
+    /// as activity arriving after the last look.
+    @Test("a task nobody has opened is unread")
+    func neverOpenedIsUnread() {
         let store = TaskReadStore(defaults: defaults())
 
-        #expect(store.isUnread(taskID: "t1", lastActivity: .now) == false)
+        #expect(store.isUnread(taskID: "t1", lastActivity: .now))
+        #expect(store.isUnread(taskID: "t1", lastActivity: nil) == false, "nothing to have missed")
     }
 
     @Test("activity after the last look makes a task unread")

@@ -74,3 +74,45 @@ struct TaskRowTests {
         #expect(TaskRow(task: unknown, steps: steps).stepName == nil)
     }
 }
+
+/// The order the reader's own state implies. The server has never heard of it, so it is decided
+/// here and can be asserted here.
+@Suite("Rows that want reading")
+struct TaskRowOrderTests {
+    private func row(_ id: String, depth: Int = 0) -> TaskRow {
+        TaskRow(
+            id: id,
+            title: id,
+            stepName: nil,
+            isWorking: false,
+            depth: depth,
+            lastActivity: .now
+        )
+    }
+
+    @Test("rows that want reading come first, and keep the order they had")
+    func unreadFirstIsStable() {
+        let ordered = [row("a"), row("b"), row("c")]
+            .unreadFirst { $0.id == "c" || $0.id == "a" }
+
+        #expect(ordered.map(\.id) == ["a", "c", "b"])
+    }
+
+    /// A subtask sorted above its own parent would make the indent column a lie, so a task and the
+    /// rows under it move together.
+    @Test("a subtask moves with its parent, never above it")
+    func subtasksMoveWithTheirParent() {
+        let rows = [row("a"), row("a1", depth: 1), row("b"), row("b1", depth: 1)]
+
+        let ordered = rows.unreadFirst { $0.id == "b" }
+
+        #expect(ordered.map(\.id) == ["b", "b1", "a", "a1"])
+    }
+
+    @Test("nothing moves when nothing wants reading")
+    func nothingMoves() {
+        let rows = [row("a"), row("a1", depth: 1), row("b")]
+
+        #expect(rows.unreadFirst { _ in false }.map(\.id) == ["a", "a1", "b"])
+    }
+}
