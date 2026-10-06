@@ -30,7 +30,7 @@ struct TaskRowView: View {
 
             Text(row.title)
                 .font(Theme.Face.prose(.body))
-                .foregroundStyle(isUnread ? Theme.ink : Theme.muted)
+                .foregroundStyle(rowInk)
                 // Three lines, because an ellipsis in the middle of a sentence is
                 // worse than a slightly taller row.
                 .lineLimit(3)
@@ -38,7 +38,7 @@ struct TaskRowView: View {
             HStack(alignment: .firstTextBaseline, spacing: Theme.Space.snug) {
                 Text(fact)
                     .font(Theme.Face.chrome(.footnote, weight: wantsAPerson ? .medium : .regular))
-                    .foregroundStyle(wantsAPerson ? Theme.ink : Theme.muted)
+                    .foregroundStyle(rowInk)
                     .lineLimit(1)
                 Spacer(minLength: Theme.Space.snug)
                 if let activity = row.lastActivity {
@@ -72,6 +72,16 @@ struct TaskRowView: View {
 
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
+    }
+
+    /// The colour this row's words take: ink while the task has not been read, muted once it has.
+    ///
+    /// The whole row follows it. One bright word under a dimmed title read as a mistake rather
+    /// than as emphasis, and the row is the thing that has or has not been read — not the fact
+    /// line inside it. What a task wants is said in the words and in the weight, and whether it
+    /// is being worked on is the spine's.
+    private var rowInk: Color {
+        isUnread ? Theme.ink : Theme.muted
     }
 
     /// What the row says under its title: what it wants, or where it sits.
