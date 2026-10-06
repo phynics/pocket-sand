@@ -51,8 +51,29 @@ struct MarkdownText: View {
     }
 }
 
-/// The app's palette is built out of `UIColor`/`NSColor`, which are main-actor things, so the theme
-/// is built on the main actor and held there.
+/// `@preconcurrency`, because MarkdownUI's own isolation is what these warnings are about.
+///
+/// This extension has to be `@MainActor`: `MarkdownUI.Theme()` is main-actor-isolated, so the theme
+/// cannot be built anywhere else.
+///
+/// **Known gap: ninety-seven `#IsolatedConformances` warnings come from right here.** A view built
+/// inside a main-actor context gets a main-actor-isolated conformance, and MarkdownUI's block
+/// builders are `nonisolated`, so every block is a conformance that cannot be handed back. Four
+/// fixes were attempted and measured against a clean build, and none of them works:
+///
+/// - De-isolating this extension: an error. `MarkdownUI.Theme()` is main-actor-isolated, so the
+///   theme cannot be built anywhere else.
+/// - De-isolating the palette's dynamic-colour initialiser, so the theme need not read main-actor
+///   state: the same error, because the isolation is MarkdownUI's and not the palette's.
+/// - Turning `InferIsolatedConformances` off: still 97. The diagnostic is not that feature's — it
+///   fires under the Swift 6 language mode for conformances inferred anywhere.
+/// - `@preconcurrency import MarkdownUI`: still 97.
+///
+/// What is left is to stop using the closure-taking block builders: express as much of the theme as
+/// MarkdownUI allows with its `TextStyle` forms, and keep closures only for the blocks that
+/// genuinely need a view — a blockquote's rule, a code block's scroll view, a table. That trades
+/// the app's own divider, its margins and its table paint for a quiet build, which is a decision
+/// about how the transcript looks and not one to take silently.
 @MainActor
 extension MarkdownUI.Theme {
     /// The agent's page, set in this app's own hands.

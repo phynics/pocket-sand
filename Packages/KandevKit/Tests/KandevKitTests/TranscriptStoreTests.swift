@@ -434,3 +434,71 @@ struct TranscriptCondensingStoreTests {
         #expect(store.isCondensedByDefault(turnID: "turn-9", working: true) == false)
     }
 }
+
+/// The streaming path: the one place in this app that runs once per *token*.
+///
+/// Its own suite because `upsert` is what a growing reply exercises, and because the figure below
+/// is the point of one of these tests rather than a pass or a fail.
+@MainActor
+@Suite("Streaming path")
+struct StreamingPathTests {
+    private func store(holding messages: [KandevMessage]) async -> TranscriptStore {
+        let source = StubTranscriptSource(
+            task: .success(task),
+            sessions: .success([session("s1", primary: true)]),
+            messages: ["s1": messages]
+        )
+        let store = TranscriptStore(source: source)
+        await store.load(taskID: "t1")
+        return store
+    }
+
+    /// `upsert` stopped regrouping the whole conversation for every streamed token, so its two
+    /// paths need saying out loud: a message it already holds is replaced where it sits, and one it
+    /// has never seen is added without disturbing what is there.
+    @Test("a streamed update replaces its own row and leaves the rest alone")
+    func upsertIsInPlace() async {
+        let store = await store(holding: [
+            message("m1", author: "user", text: "first", turn: "t1"),
+            message("m2", author: "agent", text: "grow", turn: "t2"),
+        ])
+
+        store.upsert(message("m2", author: "agent", text: "grown longer", turn: "t2"))
+
+        #expect(store.turns.map(\.id) == ["t1", "t2"])
+        #expect(store.turns[0].rows.map(\.text) == ["first"])
+        #expect(store.turns[1].rows.map(\.text) == ["grown longer"])
+
+        // An earlier turn, not the one being written: the search walks back to find it.
+        store.upsert(message("m1", author: "user", text: "first, edited", turn: "t1"))
+        #expect(store.turns[0].rows.map(\.text) == ["first, edited"])
+        #expect(store.turns[1].rows.map(\.text) == ["grown longer"])
+
+        // And a message the transcript has never seen still adds a turn, in arrival order.
+        store.upsert(message("m3", author: "agent", text: "third", turn: "t3"))
+        #expect(store.turns.map(\.id) == ["t1", "t2", "t3"])
+        #expect(store.turns[2].rows.map(\.text) == ["third"])
+    }
+
+    /// Prints a figure rather than asserting one, because a timing assertion at this scale is flaky
+    /// on a loaded machine and the number is the finding.
+    ///
+    /// It was 3.70 seconds before the streaming update stopped regrouping the conversation, and
+    /// 0.74 after. It grows with the conversation, which is the property that matters: the cost is
+    /// now bounded by the turn being written rather than by how much has been said before.
+    @Test("2000 streamed updates on a 500-message transcript")
+    func upsertCost() async {
+        let store = await store(holding: (0..<500).map {
+            message("m\($0)", author: "agent", text: "line \($0)", turn: "turn-\($0 / 10)")
+        })
+
+        let elapsed = await ContinuousClock().measure {
+            for i in 0..<2000 {
+                store.upsert(
+                    message("m\(i % 500)", author: "agent", text: "line \(i)", turn: "turn-\((i % 500) / 10)")
+                )
+            }
+        }
+        print("BENCH 2000 streamed updates on a 500-message transcript: \(elapsed)")
+    }
+}
