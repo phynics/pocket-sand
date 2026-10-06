@@ -179,18 +179,37 @@ public struct KandevClient: Sendable {
 
     // MARK: - A conversation
 
+    /// One page of a session's messages, in reading order.
+    ///
+    /// The wire's default is oldest-first, which makes a page the *beginning* of a conversation.
+    /// A session longer than one page then never shows anything recent — the screen can only
+    /// receive new messages over the live stream, and every refetch replaces them with the same
+    /// old page, so a message that arrived a moment ago disappears again. A chat opens at its
+    /// tail, so the page asked for is the newest one — `sort` descending with a limit — and it is
+    /// turned back into reading order here, where the wire's direction is nobody else's business.
+    ///
+    /// `before` is unused by this client; a page taken from a cursor will need its own reading of
+    /// which way round the server hands it back.
     public func messages(
         sessionID: String,
         limit: Int? = nil,
         before: String? = nil
     ) async throws -> KandevMessagePage {
-        var payload: [String: JSONValue] = ["session_id": .string(sessionID)]
+        var payload: [String: JSONValue] = [
+            "session_id": .string(sessionID),
+            "sort": .string("desc"),
+        ]
         if let limit { payload["limit"] = .integer(limit) }
         if let before { payload["before"] = .string(before) }
-        return try await request(
+        let page = try await request(
             KandevAction.messageList,
             payload: .object(payload),
             as: KandevMessagePage.self
+        )
+        return KandevMessagePage(
+            messages: Array(page.messages.reversed()),
+            cursor: page.cursor,
+            hasMore: page.hasMore
         )
     }
 

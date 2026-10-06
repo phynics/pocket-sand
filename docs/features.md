@@ -81,8 +81,8 @@ this app does not · **·** out of scope on purpose.
 
 | Capability | Server | PWA | Here | Note |
 | --- | --- | --- | --- | --- |
-| List a session's messages | ✅ | ✅ | ✅ | Cursor-paginated, and it starts at the **oldest** message. |
-| **Load older turns** | ✅ | ✅ | — | The response carries a cursor and `has_more`; the app fetches one page with `before: nil`. Long sessions are unreachable. |
+| List a session's messages | ✅ | ✅ | ✅ | Cursor-paginated. The page fetched is the **newest** one, and it is turned back into reading order; the wire hands it over newest-first. |
+| **Load older turns** | ✅ | ✅ | — | The response carries a cursor and `has_more`; the app fetches one page with `before: nil`. Older history is unreachable. |
 | Search messages | ✅ | ✅ | — | `message.search`. |
 | Live conversation (ordered operation log) | ✅ | ✅ | ✅ | `session.conversation.subscribe`, merged by message id, with the revision gap guard. |
 | The exchange around a turn | ✅ | ✅ | ✅ | Tap any row: the prompt, the steps, the reply, and the reply before it. |
@@ -181,9 +181,9 @@ of this document that asks for anything.
    This is the gap most likely to send someone to a desktop.
 2. **Search.** The route supports `query`, the store already passes it, and only the
    field is missing. Looking something up is what a phone is for.
-3. **Older turns.** The transcript starts at the oldest message and fetches one
-   page, so a long session's history cannot be reached at all — and the cursor for
-   it is already in the response.
+3. **Older turns.** The transcript fetches one page — the newest — so a long
+   session's *history* cannot be reached at all, and the cursor for it is already
+   in the response.
 4. **Take a queued prompt back.** You can cancel the whole queue but not one entry,
    and the entries are already parsed.
 5. **Attachments.** The wire type is already there. A phone has a camera and a photo

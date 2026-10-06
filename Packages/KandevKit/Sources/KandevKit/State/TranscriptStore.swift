@@ -23,6 +23,11 @@ public final class TranscriptStore {
     public private(set) var selectedSessionID: String?
 
     private let source: any KandevTranscriptSource
+    /// How many messages one page holds.
+    ///
+    /// The page is the newest one, not the oldest: a chat opens at its tail, and a conversation
+    /// longer than one page would otherwise never show what was just said. The client turns the
+    /// wire's descending page back into reading order, so what arrives here is chronological.
     private let pageLimit: Int
     /// The messages as last read, kept so a live upsert can be merged by id
     /// rather than triggering a refetch. Bounded by the page limit.

@@ -242,12 +242,39 @@ struct KandevClientPayloadTests {
         #expect(bare.payload?["session_id"] == .string("s1"))
         #expect(bare.payload?["limit"] == nil)
         #expect(bare.payload?["before"] == nil)
+        #expect(bare.payload?["sort"] == .string("desc"), "the newest page is the one a chat needs")
 
         _ = try await client.messages(sessionID: "s1", limit: 50, before: "cursor-1")
 
         let paged = try #require(await transport.lastRequest())
         #expect(paged.payload?["limit"] == .integer(50))
         #expect(paged.payload?["before"] == .string("cursor-1"))
+    }
+
+    /// The wire hands a descending page back newest-first, and everything above the client reads
+    /// a conversation oldest-first. The turn happens here so nobody else has to know about it —
+    /// and so a session longer than one page shows its tail rather than its head.
+    @Test("a page is asked for newest-first and handed back in reading order")
+    func messagesPageIsReversed() async throws {
+        func message(_ id: String) -> JSONValue {
+            .object([
+                "id": .string(id),
+                "type": .string("message"),
+                "author_type": .string("agent"),
+                "content": .string(id),
+            ])
+        }
+        let (client, _) = client(replies: [
+            KandevAction.messageList: .object([
+                "messages": .array([message("m3"), message("m2"), message("m1")]),
+                "has_more": .bool(true),
+            ])
+        ])
+
+        let page = try await client.messages(sessionID: "s1", limit: 50)
+
+        #expect(page.messages.map(\.id) == ["m1", "m2", "m3"])
+        #expect(page.hasMore)
     }
 
     @Test("reading the queue sends the same three ids a prompt needs")
