@@ -1,0 +1,117 @@
+#!/usr/bin/env swift
+//
+// Two screenshots, side by side, on the app's own paper.
+//
+// The README wants a picture, and a bare simulator screenshot is 1206x2622 of phone: at the
+// width a README renders, one is a column and two are a wall. This puts two of them on a
+// landscape canvas with the app's paper behind them and the device's corners on, which is
+// what makes a screenshot read as a screen rather than as a file.
+//
+//   ./scripts/readme-image assets/readme-light.png <left.png> <right.png>
+//
+// `artifacts/` is gitignored, so the inputs come from `scripts/screenshots` and the outputs
+// land in `assets/`, which is committed. Re-run it after a visual change rather than
+// committing a picture of the app as it was.
+//
+// Written in Swift and run through `swift` because the alternative is a Makefile that shells
+// out to ImageMagick, which is not on this machine, or a Python imaging library, which is not
+// either. CoreGraphics is already here.
+import AppKit
+
+let arguments = CommandLine.arguments
+guard arguments.count == 4 else {
+    FileHandle.standardError.write(Data("usage: \(arguments[0]) <out.png> <left.png> <right.png>\n".utf8))
+    exit(2)
+}
+
+/// Landscape, and the same proportion as an Open Graph card, so the same picture works as a
+/// repository preview without being rebuilt for it.
+let canvas = CGSize(width: 1240, height: 900)
+let phoneWidth: CGFloat = 400
+/// The distance between the two, wide enough that their shadows do not merge into one smudge.
+let gap: CGFloat = 60
+/// The device's own corner radius, at this width.
+let corner: CGFloat = 46
+
+let image = NSBitmapImageRep(
+    bitmapDataPlanes: nil,
+    pixelsWide: Int(canvas.width),
+    pixelsHigh: Int(canvas.height),
+    bitsPerSample: 8,
+    samplesPerPixel: 4,
+    hasAlpha: true,
+    isPlanar: false,
+    colorSpaceName: .deviceRGB,
+    bytesPerRow: 0,
+    bitsPerPixel: 0
+)
+
+// An explicit bitmap rather than `NSImage.lockFocus`, which draws at the display's backing
+// scale: the first version of this wrote 2480x1800 on a Retina laptop and would have written
+// 1240x900 on anything else. A committed picture should not depend on who built it.
+guard let bitmap = image else {
+    FileHandle.standardError.write(Data("could not allocate the canvas\n".utf8))
+    exit(1)
+}
+
+NSGraphicsContext.saveGraphicsState()
+NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+
+NSColor(srgbRed: 0xF5 / 255, green: 0xF5 / 255, blue: 0xF2 / 255, alpha: 1).setFill()
+NSRect(origin: .zero, size: canvas).fill()
+
+func draw(_ path: String, at x: CGFloat) {
+    guard
+        let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+        let source = NSBitmapImageRep(data: data),
+        source.pixelsWide > 0
+    else {
+        FileHandle.standardError.write(Data("could not read \(path)\n".utf8))
+        exit(1)
+    }
+
+    let height = phoneWidth * CGFloat(source.pixelsHigh) / CGFloat(source.pixelsWide)
+    let rect = NSRect(
+        x: x,
+        y: (canvas.height - height) / 2,
+        width: phoneWidth,
+        height: height
+    )
+    let outline = NSBezierPath(
+        roundedRect: rect,
+        xRadius: corner * phoneWidth / rect.width,
+        yRadius: corner * phoneWidth / rect.width
+    )
+
+    // The shadow is cast by filling the shape, not by masking the screenshot: a shadow drawn
+    // from a 1206-pixel-wide image is a blur of the whole picture's alpha, which is the same
+    // thing here and a great deal slower.
+    NSGraphicsContext.saveGraphicsState()
+    let shadow = NSShadow()
+    shadow.shadowBlurRadius = 22
+    shadow.shadowOffset = NSSize(width: 0, height: -8)
+    shadow.shadowColor = NSColor.black.withAlphaComponent(0.16)
+    shadow.set()
+    NSColor.black.setFill()
+    outline.fill()
+    NSGraphicsContext.restoreGraphicsState()
+
+    NSGraphicsContext.saveGraphicsState()
+    outline.addClip()
+    source.draw(in: rect)
+    NSGraphicsContext.restoreGraphicsState()
+}
+
+let totalWidth = phoneWidth * 2 + gap
+draw(arguments[2], at: (canvas.width - totalWidth) / 2)
+draw(arguments[3], at: (canvas.width - totalWidth) / 2 + phoneWidth + gap)
+
+NSGraphicsContext.restoreGraphicsState()
+
+guard let png = bitmap.representation(using: .png, properties: [:]) else {
+    FileHandle.standardError.write(Data("could not encode the canvas\n".utf8))
+    exit(1)
+}
+
+try png.write(to: URL(fileURLWithPath: arguments[1]))
+print("wrote \(arguments[1])")

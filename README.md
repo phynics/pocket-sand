@@ -12,6 +12,14 @@ Tasks are the primary object. A task holds sessions; a session holds the
 transcript. See [`CONTEXT.md`](CONTEXT.md) for the vocabulary and
 [`docs/`](docs) for why it is built this way.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme-dark.png">
+    <img src="assets/readme-light.png" width="100%"
+         alt="The task list and a transcript, in the reader's own appearance">
+  </picture>
+</p>
+
 ## Requirements
 
 - **iOS 26 / macOS 26**, and Xcode with the matching SDKs. The app is built on
