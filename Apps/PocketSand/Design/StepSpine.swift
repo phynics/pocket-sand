@@ -13,14 +13,24 @@ import SwiftUI
 struct StepSpine: View {
     let colorToken: String?
     var state: SpineState = .quiet
+    /// Whether the task has been read.
+    ///
+    /// A read task's spine sits back: the colour column still says where the work is, and its
+    /// weight is what says whether you have seen it. One dimension, one meaning — the width and
+    /// the motion are the state's.
+    var isSeen = false
 
     var body: some View {
         Rectangle()
             .fill(fill)
-            .frame(width: state.width)
-            .brightness(state.brightness)
+            .frame(width: Theme.Spine.width)
+            .opacity(isSeen ? Self.seenOpacity : 1)
             .workingPulse(state.isPulsing, period: state.pulsePeriod)
     }
+
+    /// How pale a read task's spine is. Enough to sit behind the ones you have not read, and not
+    /// so much that the colour column stops being a column.
+    private static let seenOpacity: Double = 0.4
 
     /// The workflow's colour, except when the task has failed — and then the one hue
     /// this app borrows, because it does not own it. A failed task's step colour is
@@ -32,16 +42,16 @@ struct StepSpine: View {
 
 /// What a task's spine is saying.
 ///
-/// The spine already carries the workflow's colour, so the only thing left for it to
-/// say is the task's own condition — and it says it with motion and weight rather than
-/// with a second mark beside it. A square in the corner said "attention" and nothing
-/// else, and it read as a stray artefact rather than as part of the row.
+/// The spine carries the workflow's colour, so the only thing left for it to say is the agent's
+/// condition — and it says it with motion rather than with a second mark beside it. Whether the
+/// task has been read is the spine's *weight* and the title's colour, not a state of its own:
+/// one dimension, one meaning.
+///
+/// A square in the corner said "attention" and nothing else, and it read as a stray artefact
+/// rather than as part of the row.
 enum SpineState: Equatable {
-    /// Nothing is happening and nothing has been missed.
+    /// Nothing is happening.
     case quiet
-    /// Something has happened since this task was last opened, and nothing is happening
-    /// now. Heavier than quiet: a mark to catch the eye rather than motion to hold it.
-    case unread
     /// An agent is working. The slow pulse is what "is anything happening" looks like.
     case working
     /// An agent has asked a person something and cannot go on without the answer. The fast
@@ -53,13 +63,12 @@ enum SpineState: Equatable {
 
     /// Whether the mark breathes.
     ///
-    /// Only work and a question do. Waiting to be read is not something to animate, and a row
-    /// that blinks while nothing is happening is a row that lies about it: motion here means
-    /// an agent is doing something, and nothing else may borrow it.
+    /// Only work and a question do. Nothing else may borrow motion: it means an agent is doing
+    /// something, and a row that blinks while nothing is happening is a row that lies about it.
     var isPulsing: Bool {
         switch self {
         case .working, .asking: true
-        case .quiet, .unread, .failed: false
+        case .quiet, .failed: false
         }
     }
 
@@ -67,18 +76,6 @@ enum SpineState: Equatable {
     /// is what makes the two legible without a second colour or a second mark.
     var pulsePeriod: TimeInterval {
         self == .asking ? 0.55 : 1.1
-    }
-
-    /// A wider mark for what has not been read yet. Weight reads as importance without
-    /// introducing a hue, and the spine is the one place on the row that is not text.
-    var width: CGFloat {
-        self == .unread ? Theme.Spine.width + 2 : Theme.Spine.width
-    }
-
-    /// And brighter, for the same reason. Small: the spine is the only colour on the row, and
-    /// a large lift washes the hue out.
-    var brightness: Double {
-        self == .unread ? 0.12 : 0
     }
 }
 
@@ -135,8 +132,12 @@ enum StepPalette {
             Text("In Progress, working").padding(.leading, Theme.Spine.textInset)
         }
         HStack(spacing: 0) {
-            StepSpine(colorToken: "bg-yellow-500", state: .unread)
-            Text("Unread since you last looked").padding(.leading, Theme.Spine.textInset)
+            StepSpine(colorToken: "bg-yellow-500", isSeen: false)
+            Text("Unseen, nothing happening").padding(.leading, Theme.Spine.textInset)
+        }
+        HStack(spacing: 0) {
+            StepSpine(colorToken: "bg-yellow-500", isSeen: true)
+            Text("Seen, nothing happening").padding(.leading, Theme.Spine.textInset)
         }
         HStack(spacing: 0) {
             StepSpine(colorToken: "bg-blue-500", state: .asking)

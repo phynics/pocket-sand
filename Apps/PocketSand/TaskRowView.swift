@@ -30,7 +30,7 @@ struct TaskRowView: View {
 
             Text(row.title)
                 .font(Theme.Face.prose(.body))
-                .foregroundStyle(Theme.ink)
+                .foregroundStyle(isUnread ? Theme.ink : Theme.muted)
                 // Three lines, because an ellipsis in the middle of a sentence is
                 // worse than a slightly taller row.
                 .lineLimit(3)
@@ -66,7 +66,7 @@ struct TaskRowView: View {
         .padding(.trailing, Theme.Space.loose)
         .padding(.vertical, Theme.Space.base + 2)
         .background(alignment: .leading) {
-            StepSpine(colorToken: row.stepColor, state: spineState)
+            StepSpine(colorToken: row.stepColor, state: spineState, isSeen: !isUnread)
                 .padding(.vertical, Theme.Spine.gap)
         }
 
@@ -78,11 +78,11 @@ struct TaskRowView: View {
     ///
     /// State first, on purpose. The list answers "which of these needs me", and a step name says
     /// where the work is rather than what it wants — so a task that wants a person says so, and a
-    /// task that wants nobody says where it is.
+    /// task that wants nobody says where it is. Whether it has been read is the title's colour and
+    /// the spine's weight, and is not repeated here.
     private var fact: String {
         if row.isFailed { return "Failed" }
         if row.isAwaitingAnswer { return "Asked you a question" }
-        if isUnread { return "New since you looked" }
         if row.needsAttention { return "Waiting for you" }
         if row.isWorking { return row.stepName.map { "Working · \($0)" } ?? "Working" }
         return row.stepName ?? "No step"
@@ -100,14 +100,14 @@ struct TaskRowView: View {
 
     /// What the spine is saying, in the order the conditions exclude each other.
     ///
-    /// A failed task is not also working, and a task waiting on an answer is not merely
-    /// unread: one has stopped on a question, the other has finished and been missed. Motion
-    /// is kept for the two states where an agent is doing something.
+    /// A failed task is not also working, and a task waiting on an answer is not merely waiting
+    /// for input: one has stopped on a question, the other has finished its turn. Motion is kept
+    /// for the two states where an agent is doing something; whether the row has been read is the
+    /// spine's weight rather than a state here.
     private var spineState: SpineState {
         if row.isFailed { return .failed }
         if row.isWorking { return .working }
         if row.isAwaitingAnswer { return .asking }
-        if isUnread { return .unread }
         return .quiet
     }
 
