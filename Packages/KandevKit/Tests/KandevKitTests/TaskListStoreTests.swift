@@ -208,20 +208,6 @@ struct TaskListStoreTests {
         #expect(queries.last?.includeEphemeral == true)
     }
 
-    /// The stats are the list's answer to "which of these needs me", so they count the tasks that
-    /// want a person first, and then the agents working on something nobody has to touch.
-    @Test("the stats count who wants a person and who is working for nobody")
-    func statsCount() async {
-        let (store, _) = await loadedStore(tasks: [
-            makeTask(id: "t1", title: "Waiting", stepID: "step-work", state: "REVIEW", sessionState: "WAITING_FOR_INPUT"),
-            makeTask(id: "t2", title: "Running", stepID: "step-work", sessionState: "RUNNING"),
-            makeTask(id: "t3", title: "Quiet", stepID: "step-work", sessionState: "STARTING"),
-        ])
-
-        #expect(store.stats.wantYou == 1)
-        #expect(store.stats.working == 1)
-    }
-
     /// The next page has to be the same list as the page it appends to. It used to be
     /// built from scratch, which dropped the archive flag — so paging the archive
     /// quietly fetched active work — and would have dropped the ask for chats too.
@@ -767,7 +753,7 @@ struct TaskListGroupingTests {
 
         let sections = store.sections(.byRepository)
         #expect(sections.map(\.id) == ["chats", "r2", "r1"])
-        #expect(sections.map(\.title) == ["Chats", "kandev", "pocket-sand"])
+        #expect(sections.map(\.title) == ["Quick Chats", "kandev", "pocket-sand"])
         #expect(sections[0].isChats)
         #expect(sections[1].rows.map(\.id) == ["t1", "t5"], "the server's order, not ours")
         #expect(sections[2].rows.map(\.id) == ["t3", "t4"])

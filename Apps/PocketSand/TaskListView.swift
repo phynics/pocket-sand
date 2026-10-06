@@ -298,8 +298,6 @@ struct TaskListView: View {
 
     private var list: some View {
         List {
-            statsLine
-
             if store.showingArchived {
                 Section {
                     Text("Tasks you archived, newest first. Swipe one to put it back.")
@@ -366,44 +364,6 @@ struct TaskListView: View {
         .animation(.default, value: store.rows)
     }
 
-    /// What the list adds up to, in one line.
-    ///
-    /// The list's question is "which of these needs me", so the tasks that need a person are
-    /// counted first and in ink, and the rest is context. Shown only when there is something to
-    /// say: a line reading "0 want you" spends a row saying nothing.
-    @ViewBuilder private var statsLine: some View {
-        let stats = store.stats
-        if stats.wantYou > 0 || stats.working > 0 {
-            Text(statsLineText(stats))
-                .font(Theme.Face.chrome(.footnote))
-                .listRowInsets(EdgeInsets(
-                    top: Theme.Space.snug,
-                    leading: Theme.Space.loose,
-                    bottom: Theme.Space.base,
-                    trailing: Theme.Space.loose
-                ))
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-        }
-    }
-
-    private func statsLineText(_ stats: TaskListStore.Stats) -> AttributedString {
-        var line = AttributedString()
-        if stats.wantYou > 0 {
-            var wants = AttributedString("\(stats.wantYou) want you")
-            wants.font = Theme.Face.chrome(.footnote, weight: .medium)
-            wants.foregroundColor = Theme.ink
-            line += wants
-        }
-        if stats.working > 0 {
-            let leading = stats.wantYou > 0 ? " · " : ""
-            var work = AttributedString("\(leading)\(stats.working) working")
-            work.foregroundColor = Theme.muted
-            line += work
-        }
-        return line
-    }
-
     /// The chats shelf: a heading that opens and closes them, and the chats themselves.
     ///
     /// Closed to begin with, because the work is what this screen is for and a chat is a scratch
@@ -420,7 +380,7 @@ struct TaskListView: View {
                 HStack(spacing: Theme.Space.snug) {
                     Image(systemName: chatsExpanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 10, weight: .semibold))
-                    Text("Chats")
+                    Text("Quick Chats")
                     Text("\(section.rows.count)")
                         .monospacedDigit()
                     Spacer(minLength: 0)
@@ -431,7 +391,7 @@ struct TaskListView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Chats, \(section.rows.count)")
+            .accessibilityLabel("Quick chats, \(section.rows.count)")
             .accessibilityHint(chatsExpanded ? "Closes the chats" : "Opens the chats")
         }
     }

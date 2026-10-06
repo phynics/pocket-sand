@@ -353,7 +353,7 @@ public final class TaskListStore {
 
         var sections: [Section] = []
         if !chats.isEmpty {
-            sections.append(Section(id: "chats", title: "Chats", rows: chats, isChats: true))
+            sections.append(Section(id: "chats", title: "Quick Chats", rows: chats, isChats: true))
         }
 
         switch listing {
@@ -416,22 +416,6 @@ public final class TaskListStore {
         }
         rows = Self.nested(built)
         unresolvedStepCount = rows.count { $0.stepName == nil }
-    }
-
-    /// What the list adds up to, for the one line above it.
-    public struct Stats: Sendable, Equatable {
-        /// Tasks that want a person, broadly: failed, asked a question, or at a gate.
-        public var wantYou: Int
-        /// Agents working on something nobody has to touch.
-        public var working: Int
-    }
-
-    /// The counts worth putting at the top of the list.
-    public var stats: Stats {
-        Stats(
-            wantYou: rows.count { $0.wantsAPerson },
-            working: rows.count { $0.isWorking && !$0.wantsAPerson }
-        )
     }
 
     /// Whether a task belongs in the set the toggle is showing.
