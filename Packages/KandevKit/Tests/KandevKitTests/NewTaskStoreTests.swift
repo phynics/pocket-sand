@@ -226,7 +226,6 @@ actor StubChatStarter: KandevChatStarting {
         var workspaceID: String
         var agentProfileID: String
         var title: String?
-        var repositories: [String]
     }
 
     private(set) var requests: [Request] = []
@@ -241,16 +240,14 @@ actor StubChatStarter: KandevChatStarting {
         kind: KandevChatKind,
         workspaceID: String,
         agentProfileID: String,
-        title: String?,
-        repositories: [String]
+        title: String?
     ) async throws -> KandevChat {
         requests.append(
             Request(
                 kind: kind,
                 workspaceID: workspaceID,
                 agentProfileID: agentProfileID,
-                title: title,
-                repositories: repositories
+                title: title
             )
         )
         if let failure {
@@ -370,7 +367,6 @@ struct NewTaskDoorTests {
         #expect(request?.kind == .quick)
         #expect(request?.workspaceID == "w1")
         #expect(request?.agentProfileID == "p1")
-        #expect(request?.repositories.isEmpty == true, "the workspace's own repositories are the default")
     }
 
     @Test("a chat is named after the sentence, and the setup chat after its job")

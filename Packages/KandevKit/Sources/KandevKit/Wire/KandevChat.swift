@@ -59,17 +59,18 @@ public struct KandevChat: Decodable, Sendable, Equatable {
 public protocol KandevChatStarting: Sendable {
     /// Starts a chat and returns the task and session it created.
     ///
+    /// No repository is named. The workspace's own is what a chat uses, and the server requires a
+    /// base branch beside any repository it is given — which is a choice this client does not
+    /// offer when a chat starts.
+    ///
     /// - Parameters:
     ///   - title: What the task is called. A chat has no title field of its own,
     ///     so this is derived from what the person wrote, or from the agent's name.
-    ///   - repositories: Repositories to attach. Empty means the workspace's own,
-    ///     which is the right default on a phone.
     func startChat(
         kind: KandevChatKind,
         workspaceID: String,
         agentProfileID: String,
-        title: String?,
-        repositories: [String]
+        title: String?
     ) async throws -> KandevChat
 }
 
@@ -78,15 +79,13 @@ public extension KandevChatStarting {
     func startChat(
         kind: KandevChatKind,
         workspaceID: String,
-        agentProfileID: String,
-        title: String? = nil
+        agentProfileID: String
     ) async throws -> KandevChat {
         try await startChat(
             kind: kind,
             workspaceID: workspaceID,
             agentProfileID: agentProfileID,
-            title: title,
-            repositories: []
+            title: nil
         )
     }
 }

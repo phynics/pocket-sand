@@ -11,6 +11,33 @@ struct KandevPayloadTests {
         try JSONDecoder().decode(T.self, from: Data(json.utf8))
     }
 
+    /// The `repositories` field is a list of repository *inputs*, not a list of ids. A bare id
+    /// string is refused by the server's decoder before any handler sees it — which is exactly
+    /// what "cannot unmarshal string into …httpTaskRepositoryInput" says.
+    @Test("a drafted repository is the object the server takes, not a bare id")
+    func draftedRepositoryIsAnObject() throws {
+        let draft = KandevTaskDraft(
+            workspaceID: "w1",
+            workflowID: "wf1",
+            title: "T",
+            repositoryIDs: ["r1", "r2"]
+        )
+
+        let repositories = try #require(draft.payload["repositories"]?.arrayValue)
+        #expect(repositories.count == 2)
+        #expect(repositories.first?["repository_id"]?.stringValue == "r1")
+        #expect(repositories.last?["repository_id"]?.stringValue == "r2")
+    }
+
+    /// Absent rather than empty: the field means "these repositories" and no field means the
+    /// workspace's own, which is not the same as telling the server "none".
+    @Test("no repository leaves the field off entirely")
+    func noRepositoryLeavesTheFieldOff() {
+        let draft = KandevTaskDraft(workspaceID: "w1", workflowID: "wf1", title: "T")
+
+        #expect(draft.payload["repositories"] == nil)
+    }
+
     /// The full output of a shell call, which is fetched rather than listed: the message
     /// carries only its summary, and the body is bounded at 256 KiB per field.
     @Test("decodes a shell output snapshot, open or finished")

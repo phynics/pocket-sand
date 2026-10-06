@@ -53,10 +53,20 @@ public struct KandevTaskDraft: Sendable, Equatable {
         // Left off rather than sent empty, so the workspace's own repositories are
         // used and the server is not told "none" when the answer is "whichever".
         if !repositoryIDs.isEmpty {
-            members["repositories"] = .array(repositoryIDs.map { .string($0) })
+            members["repositories"] = .array(repositoryIDs.map(repositoryInputPayload))
         }
         return .object(members)
     }
+}
+
+/// One repository for a create request, in the shape the server takes.
+///
+/// `repositories` is a list of repository *inputs* — `{ repository_id, base_branch, … }` — and not
+/// a list of ids. A bare id string is refused by the decoder before any handler sees it:
+/// "cannot unmarshal string into …httpTaskRepositoryInput". `repository_id` is the one field this
+/// client can fill; the rest describe a checkout it does not choose.
+func repositoryInputPayload(_ repositoryID: String) -> JSONValue {
+    .object(["repository_id": .string(repositoryID)])
 }
 
 /// Creating a task.

@@ -117,14 +117,10 @@ public struct KandevClient: Sendable {
         kind: KandevChatKind,
         workspaceID: String,
         agentProfileID: String,
-        title: String?,
-        repositories: [String]
+        title: String?
     ) async throws -> KandevChat {
         var members: [String: JSONValue] = ["agent_profile_id": .string(agentProfileID)]
         if let title, !title.isEmpty { members["title"] = .string(title) }
-        if !repositories.isEmpty {
-            members["repositories"] = .array(repositories.map { .string($0) })
-        }
         return try await http.post(
             kind.route(workspaceID),
             body: .object(members),
