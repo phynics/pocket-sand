@@ -387,14 +387,29 @@ public struct KandevClient: Sendable {
     ) async throws -> KandevTaskDeletePreflight {
         try await http.post(
             KandevHTTPRoute.taskDeletePreflight,
-            body: .object([
-                "task_ids": .array(taskIDs.map { .string($0) }),
-                "cascade": .bool(cascadeSubTasks),
-                "discard_worktree_changes": .bool(discardWorktreeChanges),
-            ]),
+            body: Self.deletePreflightPayload(
+                taskIDs: taskIDs,
+                cascadeSubTasks: cascadeSubTasks,
+                discardWorktreeChanges: discardWorktreeChanges
+            ),
             as: KandevTaskDeletePreflight.self
         )
     }
+
+    /// The preflight's body, which has its own name because the interesting thing about it is what
+    /// is *not* in it.
+    ///
+    /// The pinned release line's preflight decodes with `DisallowUnknownFields` and knows two
+    /// fields, `task_ids` and `cascade`. A body carrying `discard_worktree_changes: false` is
+    /// therefore refused outright as an invalid request — and that refusal is a *failed delete of
+    /// every task*, quick chat or otherwise, because the ticket this answers with is what the
+    /// delete route demands afterwards. Nothing could be removed at all.
+    ///
+    /// Sent only when it is being asked for, which is not the same as sending `false`. The field
+    /// arrived after the pin: only a server that knows it can answer `requires_discard_consent`,
+    /// and only such a server ever reaches the re-ask with it set. On the pinned version that
+    /// branch is unreachable and the flag is never sent, so the version that cannot read it is
+    /// never asked to.
 
     /// Deletes a task.
     ///
@@ -417,6 +432,21 @@ public struct KandevClient: Sendable {
             query: query,
             headers: ["X-Kandev-Task-Delete-Confirmation": confirmation]
         )
+    }
+
+    static func deletePreflightPayload(
+        taskIDs: [String],
+        cascadeSubTasks: Bool,
+        discardWorktreeChanges: Bool
+    ) -> JSONValue {
+        var body: [String: JSONValue] = [
+            "task_ids": .array(taskIDs.map { .string($0) }),
+            "cascade": .bool(cascadeSubTasks),
+        ]
+        if discardWorktreeChanges {
+            body["discard_worktree_changes"] = .bool(true)
+        }
+        return .object(body)
     }
 
     /// Watches a session's conversation.

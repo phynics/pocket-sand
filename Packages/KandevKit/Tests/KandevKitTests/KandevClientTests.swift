@@ -303,4 +303,30 @@ struct KandevClientPayloadTests {
         #expect(request.payload?["task_id"] == .string("t1"))
         #expect(request.payload?["session_incarnation_id"] == .string("inc-1"))
     }
+
+    /// The pinned release line's preflight decodes with `DisallowUnknownFields` and knows two
+    /// fields. A body carrying `discard_worktree_changes: false` was refused as an invalid request,
+    /// and since the ticket that preflight answers with is what the delete route demands, that
+    /// refusal was a failed delete of *every* task on a v0.96.0 server. Verified against the live
+    /// one: `{"error":"invalid task delete preflight request"}`.
+    @Test("the delete preflight sends only the fields the pinned server knows")
+    func deletePreflightPayloadShape() {
+        let asking = KandevClient.deletePreflightPayload(
+            taskIDs: ["t1", "t2"],
+            cascadeSubTasks: true,
+            discardWorktreeChanges: false
+        )
+        #expect(asking["task_ids"] == .array([.string("t1"), .string("t2")]))
+        #expect(asking["cascade"] == .bool(true))
+        #expect(asking["discard_worktree_changes"] == nil)
+
+        // And it is not dropped altogether: a server that can answer the question is still asked
+        // it, because discarding uncommitted work is the one thing that needs consent.
+        let discarding = KandevClient.deletePreflightPayload(
+            taskIDs: ["t1"],
+            cascadeSubTasks: false,
+            discardWorktreeChanges: true
+        )
+        #expect(discarding["discard_worktree_changes"] == .bool(true))
+    }
 }
