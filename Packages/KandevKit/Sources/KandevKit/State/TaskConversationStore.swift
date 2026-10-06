@@ -338,6 +338,15 @@ public final class TaskConversationStore {
         await composer.refreshQueue()
     }
 
+    /// Reads the page of conversation before the oldest one on screen.
+    ///
+    /// Nothing to do with the queue, and nothing to do with the follower: the change stream
+    /// reports what is new, and this is the only way to what is old.
+    @discardableResult
+    public func loadOlder() async -> Bool {
+        await transcript.loadOlder()
+    }
+
     /// Opens another session of this task.
     ///
     /// One sequence, because the transcript, the composer, and the subscription

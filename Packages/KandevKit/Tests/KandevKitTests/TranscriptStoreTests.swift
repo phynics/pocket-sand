@@ -12,17 +12,25 @@ actor StubTranscriptSource: KandevTranscriptSource {
     var sessionsResult: Result<[KandevSession], any Error>
     var messagesBySession: [String: [KandevMessage]]
     var messagesFailure: (any Error)?
+    /// Pages keyed by the cursor they answer, so a test can walk a conversation backwards the way
+    /// the server hands it over. The key is `before`, or empty for the newest page.
+    var pages: [String: KandevMessagePage] = [:]
 
     private(set) var requestedSessions: [String] = []
+    /// What each read asked to come before, so a test can see which cursor was used — and that a
+    /// retry asked for the same one rather than skipping over a page that never arrived.
+    private(set) var requestedCursors: [String?] = []
 
     init(
         task: Result<KandevTask, any Error>,
         sessions: Result<[KandevSession], any Error>,
-        messages: [String: [KandevMessage]] = [:]
+        messages: [String: [KandevMessage]] = [:],
+        pages: [String: KandevMessagePage] = [:]
     ) {
         taskResult = task
         sessionsResult = sessions
         messagesBySession = messages
+        self.pages = pages
     }
 
     func task(id: String) async throws -> KandevTask { try taskResult.get() }
@@ -31,9 +39,15 @@ actor StubTranscriptSource: KandevTranscriptSource {
 
     func messages(sessionID: String, limit: Int?, before: String?) async throws -> KandevMessagePage {
         requestedSessions.append(sessionID)
+        requestedCursors.append(before)
         if let messagesFailure {
             self.messagesFailure = nil
             throw messagesFailure
+        }
+        // Paged when a test set up pages, and a single page otherwise, so the tests that are not
+        // about paging do not have to describe a conversation twice.
+        if !pages.isEmpty {
+            return pages[before ?? ""] ?? KandevMessagePage(messages: [], cursor: nil, hasMore: false)
         }
         return KandevMessagePage(messages: messagesBySession[sessionID] ?? [], cursor: nil, hasMore: false)
     }
@@ -83,12 +97,14 @@ struct TranscriptStoreTests {
     private func loaded(
         sessions: [KandevSession],
         messages: [String: [KandevMessage]] = [:],
+        pages: [String: KandevMessagePage] = [:],
         stepNames: [String: String] = [:]
     ) async -> (TranscriptStore, StubTranscriptSource) {
         let source = StubTranscriptSource(
             task: .success(task),
             sessions: .success(sessions),
-            messages: messages
+            messages: messages,
+            pages: pages
         )
         let store = TranscriptStore(source: source, stepNames: stepNames)
         await store.load(taskID: "t1")
@@ -107,6 +123,110 @@ struct TranscriptStoreTests {
         #expect(store.sessions.count == 2)
         #expect(store.selectedSessionID == "s2")
         #expect(store.turns.first?.rows.first?.text == "hello")
+    }
+
+    // MARK: - Reading backwards
+
+    /// Two pages of one conversation: the newest, and the one before it, keyed by the cursor the
+    /// server would have handed back for each — which is the oldest id in that page.
+    private func pagedConversation() -> [String: KandevMessagePage] {
+        [
+            "": KandevMessagePage(
+                messages: [message("m2", author: "agent", text: "the newer half")],
+                cursor: "m2",
+                hasMore: true
+            ),
+            "m2": KandevMessagePage(
+                messages: [message("m1", author: "user", text: "the older half")],
+                cursor: "m1",
+                hasMore: false
+            ),
+        ]
+    }
+
+    /// The transcript holds one page and opens at its tail, so everything said before that page is
+    /// not on the screen — and nothing says so, because a transcript that simply begins looks
+    /// finished.
+    @Test("an older page arrives in front of the one on screen")
+    func loadsOlderMessages() async {
+        let (store, source) = await loaded(
+            sessions: [session("s1", primary: true)],
+            pages: pagedConversation()
+        )
+
+        #expect(store.hasOlder)
+        #expect(store.turns.first?.rows.first?.text == "the newer half")
+
+        #expect(await store.loadOlder())
+
+        // In front, not appended: the reader is reading backwards, and a page landing at the end
+        // would be a conversation out of order.
+        #expect(store.turns.first?.rows.first?.text == "the older half")
+        #expect(store.turns.first?.rows.last?.text == "the newer half")
+        #expect(store.hasOlder == false)
+        // Asked for by the id the previous page named, which is what the server's cursor is.
+        #expect(await source.requestedCursors == [nil, "m2"])
+    }
+
+    @Test("nothing is asked for once the server has said there is nothing older")
+    func doesNotAskPastTheBeginning() async {
+        let (store, source) = await loaded(
+            sessions: [session("s1", primary: true)],
+            messages: ["s1": [message("m1", author: "user", text: "only")]]
+        )
+
+        #expect(store.hasOlder == false)
+        #expect(await store.loadOlder() == false)
+        // The first load and nothing else: the second ask never reached the server.
+        #expect(await source.requestedCursors == [nil])
+    }
+
+    /// A live frame can write a message that a later page also carries — the page is fetched from a
+    /// cursor, and that cursor is older than the frame that just arrived. Merged by id, the reader
+    /// sees one copy; concatenated, a conversation that grows duplicates.
+    @Test("a message already on screen is not fetched into it twice")
+    func doesNotDuplicateTheSeam() async {
+        let (store, _) = await loaded(
+            sessions: [session("s1", primary: true)],
+            pages: [
+                "": KandevMessagePage(
+                    messages: [message("m2", author: "agent", text: "newer")],
+                    cursor: "m2",
+                    hasMore: true
+                ),
+                "m2": KandevMessagePage(
+                    messages: [
+                        message("m1", author: "user", text: "older"),
+                        message("m2", author: "agent", text: "newer"),
+                    ],
+                    cursor: "m1",
+                    hasMore: false
+                ),
+            ]
+        )
+
+        #expect(await store.loadOlder())
+        #expect(store.turns.flatMap { $0.rows.map(\.text) } == ["older", "newer"])
+    }
+
+    @Test("a page that failed leaves the transcript whole and asks for the same page again")
+    func failedPageKeepsTheCursor() async {
+        let (store, source) = await loaded(
+            sessions: [session("s1", primary: true)],
+            pages: pagedConversation()
+        )
+        await source.failNextMessagesCall()
+
+        #expect(await store.loadOlder() == false)
+        #expect(store.turns.flatMap { $0.rows.map(\.text) } == ["the newer half"])
+        // Still offered, because the page is still there to ask for.
+        #expect(store.hasOlder)
+
+        #expect(await store.loadOlder())
+        #expect(store.turns.flatMap { $0.rows.map(\.text) } == ["the older half", "the newer half"])
+        // The same cursor twice: a failed page must not be skipped over, or the reader loses a
+        // span of the conversation with no sign that anything is missing.
+        #expect(await source.requestedCursors == [nil, "m2", "m2"])
     }
 
     /// Preferring the session the server calls primary keeps the app and the web

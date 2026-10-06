@@ -25,6 +25,11 @@ struct TaskDetailView: View {
     @State private var expandedRows: Set<String> = []
     /// The exchange open in a sheet, if any.
     @State private var stepsContent: TurnSheetContent?
+    /// The message to put back at the top of the view once an older page has landed.
+    ///
+    /// A turn id, set before the page is asked for and consumed by the change to `turns`. The page
+    /// arrives above the reader and would otherwise push what they were reading off the screen.
+    @State private var olderAnchor: String?
     /// Whether the newest row is on screen. Following is a courtesy, and yanking
     /// someone out of the history they are reading is not.
     @State private var isAtNewest = true
@@ -181,6 +186,14 @@ struct TaskDetailView: View {
             .onChange(of: transcript.turns) { _, _ in
                 // Reading the conversation while it grows keeps it read.
                 markSeen()
+                // A page of history has landed above the reader. Content arriving above a scroll
+                // view pushes everything under it down, so the message they were looking at has
+                // moved out from beneath them — put it back at the top of the view, where it was,
+                // and they carry on reading upwards into the page they just asked for.
+                if let anchor = olderAnchor {
+                    olderAnchor = nil
+                    proxy.scrollTo(anchor, anchor: .top)
+                }
                 guard let current = stepsContent,
                       let rebuilt = rebuiltSheet(current),
                       rebuilt != current
@@ -191,6 +204,46 @@ struct TaskDetailView: View {
     }
 
     // MARK: - The two control surfaces
+
+    /// The way back into the history.
+    ///
+    /// A conversation longer than one page opens at its tail, and the transcript holds only that
+    /// page — so without this the earlier half of a long exchange is not on the screen at all, and
+    /// nothing says so, because a transcript that simply begins is a transcript that looks
+    /// finished.
+    ///
+    /// A tap rather than a trigger on the scroll: a page that arrives while somebody is scrolling
+    /// past it moves the words under their thumb. A rule with a word in it is how this app draws a
+    /// boundary it wants noticed, and this is one.
+    @ViewBuilder
+    private var earlierMessages: some View {
+        if transcript.hasOlder || transcript.isLoadingOlder {
+            Button {
+                // Held across the load, because `transcript.turns` changes the moment the page
+                // lands and the restore has to know which message to aim at.
+                olderAnchor = transcript.turns.first?.id
+                Task { await conversation.loadOlder() }
+            } label: {
+                HStack(spacing: Theme.Space.base) {
+                    Rule()
+                    if transcript.isLoadingOlder {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        Text("Earlier messages")
+                            .font(Theme.Face.chrome(.caption))
+                            .foregroundStyle(Theme.muted)
+                    }
+                    Rule()
+                }
+                // The rules do not answer a finger; the whole line does.
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(transcript.isLoadingOlder)
+            .accessibilityLabel("Earlier messages")
+            .accessibilityHint("Loads the conversation before this point")
+        }
+    }
 
     /// Facts about the task, above the transcript.
     private func headerBar(_ task: KandevTask) -> some View {
@@ -203,6 +256,7 @@ struct TaskDetailView: View {
     @ViewBuilder
     private var content: some View {
         VStack(alignment: .leading, spacing: Theme.Space.section) {
+            earlierMessages
             transcriptBody
             queuedPrompts
             // The scroll's aiming point: the true foot of the conversation, under the

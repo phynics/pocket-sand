@@ -327,27 +327,42 @@ struct LiveStepView: View {
     let row: TranscriptRow
 
     var body: some View {
-        HStack(alignment: .top, spacing: Theme.Space.snug) {
+        // Bottom-aligned, so the slot's own foot — the edge the summary under it sits against —
+        // does not move when a three-line thought is replaced by a one-line command. At the top,
+        // a short command left its gap below it and shoved the line underneath; here the gap is
+        // above the words, which is where a transcript can afford one.
+        HStack(alignment: .bottom, spacing: Theme.Space.snug) {
             Image(systemName: RowGlyph.symbol(for: row.kind))
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.muted)
                 .frame(width: 14, alignment: .leading)
 
-            Text(text)
-                .font(font)
-                .italic(row.kind == .thinking)
-                .foregroundStyle(row.kind == .thinking ? Theme.muted : Theme.ink)
-                .lineSpacing(Theme.proseLineSpacing)
-                // Three lines, and the room for them held whether or not the text fills it. This
-                // is the one row that grows as it is written, and a row that grows moves
-                // everything under it — the summary line below, and the scroll that is trying to
-                // follow it. Reserving the space is what stops the rest of the screen twitching
-                // once a second.
-                .lineLimit(Self.lines, reservesSpace: true)
-                // A thought keeps its end, because the newest words are the point of showing it;
-                // a command keeps its beginning, because that is the part that says what it is.
-                .truncationMode(row.kind == .thinking ? .head : .tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            ZStack(alignment: .bottom) {
+                // The slot itself: three lines of the same face, holding the height whether or not
+                // the words fill it. A ghost rather than `reservesSpace` on the real text, because
+                // this is the thing that has to be bottom-aligned *within* a reserved height, and
+                // a view cannot both reserve its full height and sit at the bottom of it.
+                Text(verbatim: " ")
+                    .font(font)
+                    .italic(row.kind == .thinking)
+                    .lineSpacing(Theme.proseLineSpacing)
+                    .lineLimit(Self.lines, reservesSpace: true)
+                    .hidden()
+                    .accessibilityHidden(true)
+
+                Text(text)
+                    .font(font)
+                    .italic(row.kind == .thinking)
+                    // The machine's own narration, one step off ink: this is the line that changes
+                    // by itself, and at full ink it out-shouted the answer it belonged to.
+                    .foregroundStyle(row.kind == .thinking ? Theme.muted : Theme.graphite)
+                    .lineSpacing(Theme.proseLineSpacing)
+                    .lineLimit(Self.lines)
+                    // A thought keeps its end, because the newest words are the point of showing
+                    // it; a command keeps its beginning, because that is what says what it is.
+                    .truncationMode(row.kind == .thinking ? .head : .tail)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Working: \(text)")
@@ -438,7 +453,11 @@ struct StepsSummaryView: View {
         if let duration = item.stepsSummaryDuration {
             var time = AttributedString("\(timeLead(in: duration)) \(CompactDuration.spoken(seconds: duration))")
             time.font = Theme.Face.chrome(.footnote, weight: .medium)
-            time.foregroundColor = Theme.ink
+            // Graphite, not ink. This is the loudest line in a working transcript — it changes on
+            // its own every second — and in ink at medium weight it was heavier than the answer it
+            // was counting. It still leads with its weight; it just stops being the blackest thing
+            // on the page.
+            time.foregroundColor = Theme.graphite
             label += time
         }
 

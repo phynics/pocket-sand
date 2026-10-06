@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The app's visual vocabulary: five achromatic values, three voices, no accent.
+/// The app's visual vocabulary: six achromatic values, three voices, no accent.
 ///
 /// **The app has no colour of its own.** Every hue on screen comes from the
 /// workflow step colours the server sends, plus the system's destructive red.
@@ -38,6 +38,23 @@ enum Theme {
     static let surface = Color(light: 0xE6E6E0, dark: 0x16161A)
     static let ink = Color(light: 0x15171B, dark: 0xF2F2F4)
     static let muted = Color(light: 0x63635C, dark: 0x8E8E93)
+
+    /// What the machine is *doing*, as against what somebody *said*.
+    ///
+    /// Ink is for the two things you came to read — a person's question and an agent's answer —
+    /// and muted is for an aside: a label, a step's own name, a fact you glance at. The line under
+    /// a run and the step being written are neither. They are the only text on the screen that
+    /// changes without anyone touching it, and at full ink both read as the loudest thing in a
+    /// conversation they are only narrating: "Ran for 11 seconds" was set in ink at medium weight,
+    /// which made a counter heavier than the answer it was counting.
+    ///
+    /// Only those two lines take it. An answer stays at ink, because softening what someone said
+    /// to distinguish it from what a machine is doing would be the wrong trade.
+    ///
+    /// Measured rather than picked by eye, like the rest: 8.9:1 on paper and 10:1 on black, a
+    /// clear step below ink and a clear step above muted.
+    static let graphite = Color(light: 0x43464C, dark: 0xB4B4B9)
+
     static let rule = Color(light: 0xD0D0C8, dark: 0x2E2E32)
 
     // MARK: - Metrics

@@ -82,7 +82,7 @@ this app does not · **·** out of scope on purpose.
 | Capability | Server | PWA | Here | Note |
 | --- | --- | --- | --- | --- |
 | List a session's messages | ✅ | ✅ | ✅ | Cursor-paginated. The page fetched is the **newest** one, and it is turned back into reading order; the wire hands it over newest-first. |
-| **Load older turns** | ✅ | ✅ | — | The response carries a cursor and `has_more`; the app fetches one page with `before: nil`. Older history is unreachable. |
+| **Load older turns** | ✅ | ✅ | ✅ | A rule with a word in it at the top of the loaded page — "Earlier messages" — loads the page the server's cursor points at, and the reader is put back on the message they were looking at so the new content does not shove what they were reading off the screen. |
 | Search messages | ✅ | ✅ | — | `message.search`. |
 | Live conversation (ordered operation log) | ✅ | ✅ | ✅ | `session.conversation.subscribe`, merged by message id, with the revision gap guard. |
 | The exchange around a turn | ✅ | ✅ | ✅ | Tap any row: the prompt, the steps, the reply, and the reply before it. |
@@ -182,12 +182,9 @@ of this document that asks for anything.
    This is the gap most likely to send someone to a desktop.
 2. **Search.** The route supports `query`, the store already passes it, and only the
    field is missing. Looking something up is what a phone is for.
-3. **Older turns.** The transcript fetches one page — the newest — so a long
-   session's *history* cannot be reached at all, and the cursor for it is already
-   in the response.
-4. **Take a queued prompt back.** You can cancel the whole queue but not one entry,
+3. **Take a queued prompt back.** You can cancel the whole queue but not one entry,
    and the entries are already parsed.
-5. **Attachments.** The wire type is already there. A phone has a camera and a photo
+4. **Attachments.** The wire type is already there. A phone has a camera and a photo
    library, and an agent that cannot see a screenshot is a smaller agent.
 6. **Answer the thing that needs attention.** The spine says a task is waiting; the
    app cannot answer. The first-party client gives this a whole inbox.

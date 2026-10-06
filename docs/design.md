@@ -24,6 +24,7 @@ colours the server already sends, plus the system's destructive red.
 | `paper` | `#F5F5F2` | `#000000` |
 | `surface` | `#E6E6E0` | `#16161A` |
 | `ink` | `#15171B` | `#F2F2F4` |
+| `graphite` | `#43464C` | `#B4B4B9` |
 | `muted` | `#63635C` | `#8E8E93` |
 | `rule` | `#D0D0C8` | `#2E2E32` |
 
@@ -36,6 +37,18 @@ The values were chosen against measured contrast rather than by eye: ink on pape
 clear step below ink without becoming hard to read at caption sizes; the rule a
 hairline that is visible (1.4:1) and still quiet; the surface step just enough to
 read as a block (1.15:1).
+
+**Three text values, for three kinds of thing.** Ink is what somebody *said* — a
+person's question, an agent's answer. Muted is an aside: a label, a step's own name,
+a fact you glance at. `graphite` is what the machine is *doing*: the line under a
+run, and the step currently being written. Those two are the only text on the screen
+that changes without anyone touching it, and at full ink they were the loudest thing
+in a conversation they only narrate — "Ran for 11 seconds" was set in ink at medium
+weight, which made a counter heavier than the answer it counted. It is 8.9:1 on paper
+and 10:1 on black: a clear step below ink, a clear step above muted.
+
+An answer stays at ink. Softening what somebody said, in order to tell it apart from
+what a machine is doing, would be the wrong way round.
 
 ### The grain
 
