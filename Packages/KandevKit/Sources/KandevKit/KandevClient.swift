@@ -420,17 +420,22 @@ public struct KandevClient: Sendable {
         id: String,
         cascadeSubTasks: Bool = false,
         discardWorktreeChanges: Bool = false,
-        confirmation: String
+        confirmation: String?
     ) async throws {
         var query: [URLQueryItem] = []
         if cascadeSubTasks { query.append(URLQueryItem(name: "cascade", value: "true")) }
         if discardWorktreeChanges {
             query.append(URLQueryItem(name: "discard_worktree_changes", value: "true"))
         }
+        // Sent only where the server issues one. The pinned release line's delete route has no
+        // reference to this header and its preflight never answers with an id, so requiring one was
+        // a decode failure standing in front of every delete rather than a check the server made.
+        var headers: [String: String] = [:]
+        if let confirmation { headers["X-Kandev-Task-Delete-Confirmation"] = confirmation }
         try await http.delete(
             KandevHTTPRoute.taskDelete(taskID: id),
             query: query,
-            headers: ["X-Kandev-Task-Delete-Confirmation": confirmation]
+            headers: headers
         )
     }
 

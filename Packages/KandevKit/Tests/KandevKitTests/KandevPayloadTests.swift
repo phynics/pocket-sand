@@ -258,4 +258,21 @@ struct KandevPayloadTests {
         #expect(stamp.date == nil)
         #expect(stamp.raw == "not a date")
     }
+
+    /// The exact bytes a live v0.96.0 server answers its delete preflight with.
+    ///
+    /// There is no confirmation id in them — that version has no ticket mechanism, and its delete
+    /// route never reads the header — so a required `confirmation_id` made the decode throw, which
+    /// failed every delete *after* the request body had finally been accepted. The missing field is
+    /// the whole point of this test.
+    @Test("a preflight with no ticket decodes")
+    func deletePreflightWithoutTicket() throws {
+        let preflight = try JSONDecoder().decode(
+            KandevTaskDeletePreflight.self,
+            from: Data(#"{"requires_discard_consent":false}"#.utf8)
+        )
+
+        #expect(preflight.requiresDiscardConsent == false)
+        #expect(preflight.confirmationID == nil)
+    }
 }

@@ -114,10 +114,11 @@ public protocol KandevTaskRemoving: Sendable {
     /// looks like afterwards is the server's to say, so the caller refetches.
     func unarchiveTask(id: String) async throws
 
-    /// Asks what deleting this task would need, and gets the ticket the delete route requires.
+    /// Asks what deleting this task would need.
     ///
     /// Every delete starts here. The answer says whether a worktree holds uncommitted work — the
-    /// heavier question — and carries the confirmation id the delete must send back.
+    /// heavier question — and, on a server that issues one, the confirmation id the delete route
+    /// wants back.
     func taskDeletePreflight(
         taskIDs: [String],
         cascadeSubTasks: Bool,
@@ -126,26 +127,33 @@ public protocol KandevTaskRemoving: Sendable {
 
     /// Deletes the task. Not reversible.
     ///
-    /// `confirmation` is the ticket a `taskDeletePreflight` for exactly this delete answered with.
-    /// The route refuses without one, so there is no delete that skips the question.
+    /// `confirmation` is the ticket a `taskDeletePreflight` for exactly this delete answered with,
+    /// on a server that issues one. It is optional because the pinned release line does not: its
+    /// preflight answers `requires_discard_consent` and nothing else — verified against a live
+    /// v0.96.0 — and its delete route contains no reference to the confirmation header. A header
+    /// nobody reads is harmless; a required field the server never sends is a decode failure, and
+    /// that failure stood in front of every delete on that version.
     func deleteTask(
         id: String,
         cascadeSubTasks: Bool,
         discardWorktreeChanges: Bool,
-        confirmation: String
+        confirmation: String?
     ) async throws
 }
 
-/// The server's consent ticket for deleting a task.
+/// The server's answer about deleting a task.
 ///
-/// Short-lived, and bound to the person who asked, the cascade flag, and whether uncommitted work
-/// may be discarded — so it is issued for one exact delete and cannot be kept and reused.
+/// Where tickets exist they are short-lived and bound to the person who asked, the cascade flag,
+/// and whether uncommitted work may be discarded — issued for one exact delete, not to be kept.
+/// The pinned release line issues none: a live v0.96.0 answers `{"requires_discard_consent":false}`
+/// and nothing more.
 public struct KandevTaskDeletePreflight: Sendable, Decodable, Equatable {
     /// Whether a worktree holds uncommitted work that this delete would remove.
     public var requiresDiscardConsent: Bool
-    public var confirmationID: String
+    /// Absent on a server that does not issue tickets.
+    public var confirmationID: String?
 
-    public init(requiresDiscardConsent: Bool = false, confirmationID: String) {
+    public init(requiresDiscardConsent: Bool = false, confirmationID: String? = nil) {
         self.requiresDiscardConsent = requiresDiscardConsent
         self.confirmationID = confirmationID
     }

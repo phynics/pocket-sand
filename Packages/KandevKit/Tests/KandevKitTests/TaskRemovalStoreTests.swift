@@ -74,7 +74,7 @@ actor StubTaskRemover: KandevTaskRemoving {
         id: String,
         cascadeSubTasks: Bool,
         discardWorktreeChanges: Bool,
-        confirmation: String
+        confirmation: String?
     ) async throws {
         calls.append(
             Call(
