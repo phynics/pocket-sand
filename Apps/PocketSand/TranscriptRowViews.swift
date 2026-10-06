@@ -562,8 +562,14 @@ struct TranscriptRowView: View {
                 .background(Theme.surface)
 
         case .reply:
+            // The plate bleeds the same twelve points into the gutter that a question's band
+            // does, which puts both voices' text on the same edge and lines the two blocks up at
+            // each end. A plate that kept its own padding inside the column would indent the
+            // agent's words by it, and this screen is a column before it is anything else.
             prose
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(Theme.Space.base)
+                .raisedPlate()
 
         case .thinking, .tool, .read, .script:
             // One line, always, and the row is the control that opens it where there

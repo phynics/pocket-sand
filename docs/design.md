@@ -95,6 +95,23 @@ the face to change is the chrome's, not the agent's.
 
 No cards anywhere. Structure comes from rules, a shared left edge, and space.
 
+A **voice**, though, is not structure. A person's message is filled with the surface
+step, edge to edge — a band. An agent's answer is the paper itself, lifted off it by
+two shadows: light from the top left, shade thrown down to the bottom right.
+
+Neither is a card. A card is a container *for* structure and has an edge of its own;
+a plate's fill is the paper it lies on, so the only thing marking where it begins is
+the light, and no line is drawn across the page. It is also the one depth treatment
+that cannot cost contrast — the words stay ink on paper and the whole of the depth is
+outside them — which is what lets it go on the one voice that arrives by the page.
+The two blocks also share a width: the band and the plate both bleed the same twelve
+points into the gutter, so both voices' text starts on the same edge.
+
+In the dark the shadows cannot work, and for a reason worth writing down: a shadow
+needs a surface to fall on, and true black has none. The dark plate rises a step in
+its own fill instead and carries the light along its top edge — the same move the
+field well makes from the other direction.
+
 - **A task's step is a 3pt spine at the screen's leading edge**, in the step's own
   colour — not a filled pill. Scanning down the list gives a colour column rather
   than a stack of badges, and the step's name sits under the title where it reads

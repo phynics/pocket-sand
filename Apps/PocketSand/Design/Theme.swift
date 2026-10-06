@@ -246,6 +246,15 @@ extension View {
     func fieldArea() -> some View {
         modifier(FieldWell(shape: AnyShape(RoundedRectangle(cornerRadius: 18, style: .continuous))))
     }
+
+    /// Lifts a block off the paper, so it reads as a sheet rather than as a run of text.
+    ///
+    /// For an agent's answer, which is the one voice with no mark of its own: a question is a band,
+    /// a step is a glyph, a failure is a glyph in red, and an answer was simply prose at the width
+    /// of everything else.
+    func raisedPlate(cornerRadius: CGFloat = 12) -> some View {
+        modifier(RaisedPlate(cornerRadius: cornerRadius))
+    }
 }
 
 private struct FieldWell: ViewModifier {
@@ -277,6 +286,92 @@ private struct FieldWell: ViewModifier {
                         .blendMode(colorScheme == .dark ? .plusLighter : .normal)
                 }
         }
+    }
+}
+
+/// A plate of the same paper, raised off it.
+///
+/// Two shadows at opposite corners — light from the top left, shade thrown down to the bottom
+/// right — which is the whole of neumorphism, and the reason it belongs here. The plate is filled
+/// with the paper itself: no second colour, no border, nothing that would make it a box in an app
+/// whose structure is drawn with rules. What sets an agent's answer apart from the rows around it
+/// is its edges alone, and an edge made of light is the one kind that does not cut the column in
+/// two.
+///
+/// It costs nothing in contrast, which is what makes it safe on the one voice that arrives by the
+/// page. The words stay ink on paper; every bit of the depth is outside them.
+///
+/// On paper the two shadows do the whole job. On black they cannot: a shadow needs a surface to
+/// fall on, and true black has none, so the dark plate rises a step in its own fill and carries
+/// the light along its top edge instead. That is the same move `fieldWell` makes from the other
+/// direction, and for the same reason — a material tells you about itself by where the light is.
+struct RaisedPlate: ViewModifier {
+    var cornerRadius: CGFloat = 12
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.displayScale) private var displayScale
+
+    /// Subtle on purpose. A shadow you can point at has stopped being depth and become a drawing
+    /// of a shadow; two points of offset under a six-point blur is a soft edge, and a soft edge is
+    /// all a sheet needs to sit above the page.
+    private static let offset: CGFloat = 2
+    private static let blur: CGFloat = 6
+
+    func body(content: Content) -> some View {
+        content.background { plate }
+    }
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    }
+
+    private var plate: some View {
+        ZStack {
+            Theme.paper
+            if colorScheme == .light {
+                // The grain, so the plate is the same paper rather than a smoother one. A texture
+                // that stopped at the plate's edge would read as a patch stuck to the page, which
+                // is the one thing worse than no edge at all.
+                if let tile = PaperTexture.tile {
+                    Image(decorative: tile, scale: displayScale)
+                        .resizable(resizingMode: .tile)
+                        .allowsHitTesting(false)
+                }
+            } else {
+                // A step up from black instead of a shadow on it, and deliberately short of
+                // `surface`, so a code block inside an answer is still the lighter of the two and
+                // a well does not disappear into the sheet it was drawn on.
+                LinearGradient(
+                    colors: [Color.white.opacity(0.07), Color.white.opacity(0.028)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+        }
+        // Clipped to the shape first, so the shadows take its silhouette rather than the rectangle
+        // the fill happens to be.
+        .clipShape(shape)
+        .shadow(color: shade, radius: Self.blur, x: Self.offset, y: Self.offset)
+        .shadow(color: lift, radius: Self.blur, x: -Self.offset, y: -Self.offset)
+    }
+
+    /// The light, from the top left.
+    ///
+    /// A whisper of white would do nothing on paper, which is nearly white already, so it is
+    /// nearly white in full. On black the same white is a lamp — the paper is not there to absorb
+    /// it — and a fiftieth of the strength says the same thing.
+    private var lift: Color {
+        colorScheme == .dark ? Color.white.opacity(0.06) : Color.white.opacity(0.9)
+    }
+
+    /// The shade, thrown down to the bottom right.
+    ///
+    /// Ink rather than black: this is the only thing marking where the plate ends and the paper
+    /// begins, so it has to be findable without being seen, and it is the app's own ink softened
+    /// rather than a grey invented for the job. In the dark there is nothing to cast it on, so
+    /// there is no shade at all — the lift and the lit edge are the depth.
+    private var shade: Color {
+        colorScheme == .dark ? .clear : Theme.ink.opacity(0.12)
     }
 }
 
