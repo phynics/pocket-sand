@@ -106,9 +106,14 @@ public final class TaskListStore {
             pageSize: pageSize,
             sort: .updatedDesc,
             archived: showingArchived ? .onlyArchived : .active,
-            // Chats belong on the board, not in the archive, and they are drawn as their own
-            // section of it. The server hides ephemeral tasks unless asked, and this is the ask.
-            includeEphemeral: !showingArchived
+            // Always. This used to be `!showingArchived`, on the reasoning that a chat belongs on
+            // the board and not in the archive — and the server does not agree: archiving a quick
+            // chat answers `{"success":true}` like any other task. So a chat that was archived
+            // left the board *and* was excluded from the only list that could show it, which made
+            // it unreachable: no row, no unarchive, no way back. One tap and a conversation was
+            // gone. The server hides ephemeral tasks unless asked, and this is the ask; the archive
+            // flag above is what decides which list this is.
+            includeEphemeral: true
         )
     }
 
