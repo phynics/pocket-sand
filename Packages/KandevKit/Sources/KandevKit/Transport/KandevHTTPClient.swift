@@ -60,9 +60,13 @@ public actor KandevHTTPClient {
         _ = try await self.data(path, query: query, method: "POST", body: body)
     }
 
-    /// Sends a DELETE with query parameters. Nothing is returned.
-    public func delete(_ path: String, query: [URLQueryItem] = []) async throws {
-        _ = try await self.data(path, query: query, method: "DELETE")
+    /// Sends a DELETE with query parameters and any headers the route needs.
+    public func delete(
+        _ path: String,
+        query: [URLQueryItem] = [],
+        headers: [String: String] = [:]
+    ) async throws {
+        _ = try await self.data(path, query: query, method: "DELETE", headers: headers)
     }
 
     /// Sends a body where the answer carries nothing this client needs.
@@ -77,6 +81,7 @@ public actor KandevHTTPClient {
         _ path: String,
         query: [URLQueryItem],
         method: String = "GET",
+        headers: [String: String] = [:],
         body: JSONValue? = nil
     ) async throws -> Data {
         guard var components = URLComponents(
@@ -94,6 +99,7 @@ public actor KandevHTTPClient {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(body)

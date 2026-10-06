@@ -10,16 +10,29 @@ actor StubTaskRemover: KandevTaskRemoving {
         var id: String
         var cascade: Bool
         var discard: Bool
+        /// The ticket a delete carried, when it was one.
+        var confirmation: String? = nil
     }
 
     private(set) var calls: [Call] = []
     var archiveFailure: (any Error)?
     var deleteFailure: (any Error)?
     var unarchiveFailure: (any Error)?
+    /// What the preflight answers with. A dirty worktree is a field on it, not a failure.
+    var preflight = KandevTaskDeletePreflight(confirmationID: "ticket-1")
+    var preflightFailure: (any Error)?
 
     func failArchive(with error: any Error) { archiveFailure = error }
     func failDelete(with error: any Error) { deleteFailure = error }
     func failUnarchive(with error: any Error) { unarchiveFailure = error }
+    func failPreflight(with error: any Error) { preflightFailure = error }
+
+    func setPreflight(requiresDiscardConsent: Bool, confirmationID: String = "ticket-1") {
+        preflight = KandevTaskDeletePreflight(
+            requiresDiscardConsent: requiresDiscardConsent,
+            confirmationID: confirmationID
+        )
+    }
 
     func unarchiveTask(id: String) async throws {
         calls.append(Call(kind: "unarchive", id: id, cascade: false, discard: false))
@@ -37,13 +50,40 @@ actor StubTaskRemover: KandevTaskRemoving {
         }
     }
 
+    func taskDeletePreflight(
+        taskIDs: [String],
+        cascadeSubTasks: Bool,
+        discardWorktreeChanges: Bool
+    ) async throws -> KandevTaskDeletePreflight {
+        calls.append(
+            Call(
+                kind: "preflight",
+                id: taskIDs.first ?? "",
+                cascade: cascadeSubTasks,
+                discard: discardWorktreeChanges
+            )
+        )
+        if let preflightFailure {
+            self.preflightFailure = nil
+            throw preflightFailure
+        }
+        return preflight
+    }
+
     func deleteTask(
         id: String,
         cascadeSubTasks: Bool,
-        discardWorktreeChanges: Bool
+        discardWorktreeChanges: Bool,
+        confirmation: String
     ) async throws {
         calls.append(
-            Call(kind: "delete", id: id, cascade: cascadeSubTasks, discard: discardWorktreeChanges)
+            Call(
+                kind: "delete",
+                id: id,
+                cascade: cascadeSubTasks,
+                discard: discardWorktreeChanges,
+                confirmation: confirmation
+            )
         )
         if let deleteFailure {
             self.deleteFailure = nil
@@ -132,8 +172,13 @@ struct TaskRemovalStoreTests {
 
         _ = await store.confirm()
 
+        // The preflight first, and the delete carrying the ticket it answered with — the route
+        // refuses a delete without one.
         let calls = await remover.calls
-        #expect(calls == [.init(kind: "delete", id: "t1", cascade: true, discard: false)])
+        #expect(calls == [
+            .init(kind: "preflight", id: "t1", cascade: true, discard: false),
+            .init(kind: "delete", id: "t1", cascade: true, discard: false, confirmation: "ticket-1"),
+        ])
     }
 
     /// The refusal is a question, not a failure: the user asked for something
@@ -143,12 +188,7 @@ struct TaskRemovalStoreTests {
     @Test("a dirty worktree turns a deletion into a heavier question")
     func dirtyWorktreeAsksAgain() async {
         let (store, remover) = store()
-        await remover.failDelete(
-            with: KandevError.http(
-                status: 409,
-                body: #"{"error":{"code":"task_delete_dirty_worktree"}}"#
-            )
-        )
+        await remover.setPreflight(requiresDiscardConsent: true)
         store.ask(.delete, taskID: "t1", title: "A task")
 
         let removed = await store.confirm()
@@ -159,17 +199,13 @@ struct TaskRemovalStoreTests {
         #expect(store.failure == nil, "this is a question, not a failure")
         let calls = await remover.calls
         #expect(calls.count == 1, "nothing should be retried on its own")
+        #expect(calls.first?.kind == "preflight")
     }
 
     @Test("answering the heavier question discards and deletes")
     func discardingDeletes() async {
         let (store, remover) = store()
-        await remover.failDelete(
-            with: KandevError.http(
-                status: 409,
-                body: #"{"code":"task_delete_dirty_worktree"}"#
-            )
-        )
+        await remover.setPreflight(requiresDiscardConsent: true)
         store.ask(.delete, taskID: "t1", title: "A task")
         _ = await store.confirm()
 
@@ -177,7 +213,25 @@ struct TaskRemovalStoreTests {
 
         #expect(removed == "t1")
         let calls = await remover.calls
-        #expect(calls.last == .init(kind: "delete", id: "t1", cascade: true, discard: true))
+        #expect(
+            calls.last == .init(kind: "delete", id: "t1", cascade: true, discard: true, confirmation: "ticket-1")
+        )
+    }
+
+    /// Without a ticket there is nothing to delete with, so a preflight that fails must stop there
+    /// rather than send a delete the route will refuse.
+    @Test("a refused preflight is reported and nothing is deleted")
+    func refusedPreflightIsReported() async {
+        let (store, remover) = store()
+        await remover.failPreflight(with: KandevError.connectionClosed)
+        store.ask(.delete, taskID: "t1", title: "A task")
+
+        let removed = await store.confirm()
+
+        #expect(removed == nil)
+        #expect(store.failure != nil)
+        let calls = await remover.calls
+        #expect(calls.contains { $0.kind == "delete" } == false)
     }
 
     /// A delete refused for some other reason is a failure, and must not be

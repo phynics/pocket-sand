@@ -461,6 +461,12 @@ struct KandevHTTPRouteTests {
         )
     }
 
+    @Test("the delete preflight is a collection route, not a task's")
+    func deletePreflightPath() {
+        #expect(KandevHTTPRoute.taskDeletePreflight == "/api/v1/tasks/delete-preflight")
+        #expect(KandevHTTPRoute.taskDelete(taskID: "t1") == "/api/v1/tasks/t1")
+    }
+
     @Test("a move preview and a commit are siblings")
     func movePaths() {
         #expect(KandevHTTPRoute.taskMove(taskID: "t1") == "/api/v1/tasks/t1/move")

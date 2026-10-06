@@ -89,25 +89,43 @@ public final class TaskRemovalStore {
             switch pending.action {
             case .archive:
                 try await remover.archiveTask(id: pending.taskID, cascadeSubTasks: includesSubTasks)
-            case .delete:
-                try await remover.deleteTask(
-                    id: pending.taskID,
+
+            case .delete, .discardAndDelete:
+                let discard = pending.action == .discardAndDelete
+                // The route refuses a delete without a ticket, and a ticket is issued for one
+                // exact delete — these flags, this person — so it is asked for here rather than
+                // kept. The preflight is also where a dirty worktree is reported, which is why it
+                // comes before the delete rather than after it failed.
+                let preflight = try await remover.taskDeletePreflight(
+                    taskIDs: [pending.taskID],
                     cascadeSubTasks: includesSubTasks,
-                    discardWorktreeChanges: false
+                    discardWorktreeChanges: discard
                 )
-            case .discardAndDelete:
+                if preflight.requiresDiscardConsent, !discard {
+                    // Not a failure: a question with a heavier answer. The user asked for
+                    // something reasonable and the server is asking which thing they meant.
+                    self.pending = Pending(
+                        action: .discardAndDelete,
+                        taskID: pending.taskID,
+                        title: pending.title
+                    )
+                    failure = nil
+                    return nil
+                }
                 try await remover.deleteTask(
                     id: pending.taskID,
                     cascadeSubTasks: includesSubTasks,
-                    discardWorktreeChanges: true
+                    discardWorktreeChanges: discard,
+                    confirmation: preflight.confirmationID
                 )
             }
             self.pending = nil
             failure = nil
             return pending.taskID
         } catch let error as KandevError {
+            // The preflight is the ordinary way this question is asked; a delete that refused on
+            // its own is the same question arriving late.
             if pending.action == .delete, error.httpErrorCode == KandevTaskRemovalError.dirtyWorktree {
-                // Not a failure: a question with a heavier answer.
                 self.pending = Pending(
                     action: .discardAndDelete,
                     taskID: pending.taskID,

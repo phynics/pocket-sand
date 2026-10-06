@@ -114,17 +114,46 @@ public protocol KandevTaskRemoving: Sendable {
     /// looks like afterwards is the server's to say, so the caller refetches.
     func unarchiveTask(id: String) async throws
 
+    /// Asks what deleting this task would need, and gets the ticket the delete route requires.
+    ///
+    /// Every delete starts here. The answer says whether a worktree holds uncommitted work — the
+    /// heavier question — and carries the confirmation id the delete must send back.
+    func taskDeletePreflight(
+        taskIDs: [String],
+        cascadeSubTasks: Bool,
+        discardWorktreeChanges: Bool
+    ) async throws -> KandevTaskDeletePreflight
+
     /// Deletes the task. Not reversible.
     ///
-    /// The server refuses when a worktree holds uncommitted work and
-    /// `discardWorktreeChanges` is false, with the code
-    /// `task_delete_dirty_worktree`. That refusal is a question, not a failure:
-    /// the caller asks, and only an explicit answer discards the work.
+    /// `confirmation` is the ticket a `taskDeletePreflight` for exactly this delete answered with.
+    /// The route refuses without one, so there is no delete that skips the question.
     func deleteTask(
         id: String,
         cascadeSubTasks: Bool,
-        discardWorktreeChanges: Bool
+        discardWorktreeChanges: Bool,
+        confirmation: String
     ) async throws
+}
+
+/// The server's consent ticket for deleting a task.
+///
+/// Short-lived, and bound to the person who asked, the cascade flag, and whether uncommitted work
+/// may be discarded — so it is issued for one exact delete and cannot be kept and reused.
+public struct KandevTaskDeletePreflight: Sendable, Decodable, Equatable {
+    /// Whether a worktree holds uncommitted work that this delete would remove.
+    public var requiresDiscardConsent: Bool
+    public var confirmationID: String
+
+    public init(requiresDiscardConsent: Bool = false, confirmationID: String) {
+        self.requiresDiscardConsent = requiresDiscardConsent
+        self.confirmationID = confirmationID
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case requiresDiscardConsent = "requires_discard_consent"
+        case confirmationID = "confirmation_id"
+    }
 }
 
 extension KandevHTTPRoute {
@@ -143,6 +172,10 @@ extension KandevHTTPRoute {
     public static func taskDelete(taskID: String) -> String {
         "/api/v1/tasks/\(taskID)"
     }
+
+    /// The delete preflight: the task ids and the flags a delete would use, answered with a ticket
+    /// for exactly that delete.
+    public static let taskDeletePreflight = "/api/v1/tasks/delete-preflight"
 }
 
 /// The server's code for refusing to delete a task whose worktree is dirty.

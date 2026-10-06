@@ -359,21 +359,45 @@ public struct KandevClient: Sendable {
         try await http.post(KandevHTTPRoute.taskUnarchive(taskID: id), query: [])
     }
 
+    /// Asks what deleting this task would need. The ticket it answers with is what the delete
+    /// route takes, and it is issued for exactly these flags.
+    public func taskDeletePreflight(
+        taskIDs: [String],
+        cascadeSubTasks: Bool,
+        discardWorktreeChanges: Bool
+    ) async throws -> KandevTaskDeletePreflight {
+        try await http.post(
+            KandevHTTPRoute.taskDeletePreflight,
+            body: .object([
+                "task_ids": .array(taskIDs.map { .string($0) }),
+                "cascade": .bool(cascadeSubTasks),
+                "discard_worktree_changes": .bool(discardWorktreeChanges),
+            ]),
+            as: KandevTaskDeletePreflight.self
+        )
+    }
+
     /// Deletes a task.
     ///
-    /// Refused with `task_delete_dirty_worktree` when a worktree holds
-    /// uncommitted work, unless discarding it is asked for explicitly.
+    /// Refused — for every task — without the confirmation ticket a preflight answered with. A
+    /// worktree holding uncommitted work is refused with `task_delete_dirty_worktree` unless
+    /// discarding it is asked for explicitly.
     public func deleteTask(
         id: String,
         cascadeSubTasks: Bool = false,
-        discardWorktreeChanges: Bool = false
+        discardWorktreeChanges: Bool = false,
+        confirmation: String
     ) async throws {
         var query: [URLQueryItem] = []
         if cascadeSubTasks { query.append(URLQueryItem(name: "cascade", value: "true")) }
         if discardWorktreeChanges {
             query.append(URLQueryItem(name: "discard_worktree_changes", value: "true"))
         }
-        try await http.delete(KandevHTTPRoute.taskDelete(taskID: id), query: query)
+        try await http.delete(
+            KandevHTTPRoute.taskDelete(taskID: id),
+            query: query,
+            headers: ["X-Kandev-Task-Delete-Confirmation": confirmation]
+        )
     }
 
     /// Watches a session's conversation.

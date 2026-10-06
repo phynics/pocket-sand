@@ -313,6 +313,12 @@ struct TaskListView: View {
                 Section { FailureNote(message: message) }
             }
 
+            // A removal that was refused. Without this a delete that the server said no to looked
+            // like a row that ignored the tap.
+            if let failure = removal.failureMessage {
+                Section { FailureNote(message: failure) }
+            }
+
             // Chats first, as a shelf that can be closed; then the work, arranged the way the
             // reader asked for. A workspace whose work belongs to no project draws one untitled
             // section, which is the flat list this screen has always been.
