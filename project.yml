@@ -24,6 +24,19 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
+    # Approachable concurrency, on for both targets. The feature that earns its place is
+    # `NonisolatedNonsendingByDefault`: a `nonisolated async` function runs on its caller's actor
+    # instead of hopping to the global executor and back, so a chain of small async helpers stops
+    # costing a suspension point per link — which is most of what this codebase's async work is.
+    #
+    # Measured before believing it: a clean build with the flag off emits 97 warnings, and a clean
+    # build with it on emits the same 97. It costs nothing here. (An earlier claim in this repo that
+    # the targets built warning-free was wrong: those checks were incremental builds, and an
+    # incremental build that compiles nothing emits nothing.)
+    #
+    # KandevKit turns on the same feature in its own `Package.swift`, because a package cannot
+    # inherit an Xcode build setting.
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     DEAD_CODE_STRIPPING: YES
     GCC_WARN_UNDECLARED_SELECTOR: YES

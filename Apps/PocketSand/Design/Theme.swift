@@ -251,7 +251,7 @@ extension View {
     /// the bottom. A flat fill read as a hole cut out of the glass — sharp, with no
     /// light in it — and this is the same shape with the surface of it polished.
     func fieldWell() -> some View {
-        modifier(FieldWell(shape: AnyShape(Capsule())))
+        modifier(FieldWell(shape: Capsule()))
     }
 
     /// The same recess, for writing more than one line.
@@ -261,7 +261,7 @@ extension View {
     /// The paint is shared, so the two read as the same kind of thing: a field is the
     /// one place this app fills a container, because a field is a container for words.
     func fieldArea() -> some View {
-        modifier(FieldWell(shape: AnyShape(RoundedRectangle(cornerRadius: 18, style: .continuous))))
+        modifier(FieldWell(shape: RoundedRectangle(cornerRadius: 18, style: .continuous)))
     }
 
     /// The block one voice speaks in.
@@ -281,8 +281,14 @@ extension View {
 /// and a question in the transcript are the same object — a place words go in. Three wells
 /// differing by a few percent of tint would read as three different materials, and the transcript
 /// asks you to believe they are one.
-struct WellPaint: View {
-    let shape: AnyShape
+///
+/// Generic over the shape rather than holding an `AnyShape`. A boxed shape is an existential stored
+/// in the view, and the transcript's profile shows AttributeGraph paying for exactly that —
+/// `compare_existential_values`, comparing stored values by dynamic metadata on every layout pass,
+/// where a concrete type is compared two bytes at a time. There were two callers and both shapes
+/// are known at the call site, so nothing here needs a box.
+struct WellPaint<S: Shape>: View {
+    let shape: S
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -311,8 +317,8 @@ struct WellPaint: View {
     }
 }
 
-private struct FieldWell: ViewModifier {
-    let shape: AnyShape
+private struct FieldWell<S: Shape>: ViewModifier {
+    let shape: S
 
     func body(content: Content) -> some View {
         content.background { WellPaint(shape: shape) }
@@ -409,7 +415,7 @@ struct MessageBlock: ViewModifier {
                 // within a couple of percent of each other say nothing about who is talking.
                 Theme.surface
             } else {
-                WellPaint(shape: AnyShape(shape))
+                WellPaint(shape: shape)
             }
         } else {
             Theme.paper

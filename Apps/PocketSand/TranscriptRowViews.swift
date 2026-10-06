@@ -622,36 +622,42 @@ struct TranscriptRowView: View {
     /// serif at reading size, and the agent's answer is sans a size down. The question
     /// is what you came to the exchange for; the answer is long, and it should not
     /// shout over it.
+    ///
+    /// A `@ViewBuilder` and not `AnyView`. This used to box every one of these rows in an
+    /// existential, and profiling the transcript's own path shows exactly what that costs:
+    /// `AG::LayoutDescriptor::compare_existential_values`, AttributeGraph comparing a row's stored
+    /// values by *dynamic metadata* on every layout pass instead of comparing two types it already
+    /// knows. Two branches do not need a box.
+    @ViewBuilder
     private var prose: some View {
         // An agent answers in markdown, and this is the one place the app draws it as what it was
         // written in. The question keeps the plain path: it is a sentence in a band, and a heading
         // or a table in somebody's question would be a surprise rather than a courtesy.
         if row.kind == .reply {
-            return AnyView(MarkdownText(text: row.text, isStreaming: isStreaming))
-        }
+            MarkdownText(text: row.text, isStreaming: isStreaming)
+        } else {
+            let text = Text(row.text)
+                .font(Theme.Face.prose(.body))
+                .foregroundStyle(Theme.ink)
+                .lineSpacing(Theme.proseLineSpacing)
 
-        let text = Text(row.text)
-            .font(Theme.Face.prose(.body))
-            .foregroundStyle(Theme.ink)
-            .lineSpacing(Theme.proseLineSpacing)
-
-        guard let lines = prosePreviewLines, !isExpanded, let onToggle else {
-            return AnyView(text.textSelection(.enabled))
-        }
-        return AnyView(
-            Button {
-                withAnimation(Motion.fold(reduceMotion: reduceMotion)) { onToggle() }
-            } label: {
-                text
-                    .lineLimit(lines)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            if let lines = prosePreviewLines, !isExpanded, let onToggle {
+                Button {
+                    withAnimation(Motion.fold(reduceMotion: reduceMotion)) { onToggle() }
+                } label: {
+                    text
+                        .lineLimit(lines)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                // A hint, not a label: the label is the message, and replacing it would
+                // hide the very words this button exists to reveal.
+                .accessibilityHint("Shows the whole message")
+            } else {
+                text.textSelection(.enabled)
             }
-            .buttonStyle(.plain)
-            // A hint, not a label: the label is the message, and replacing it would
-            // hide the very words this button exists to reveal.
-            .accessibilityHint("Shows the whole message")
-        )
+        }
     }
 
     /// A row showing one line of itself, until asked — where there is anyone to ask.
