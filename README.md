@@ -20,6 +20,34 @@ transcript. See [`CONTEXT.md`](CONTEXT.md) for the vocabulary and
   </picture>
 </p>
 
+## Screens
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme-create-dark.png">
+    <img src="assets/readme-create-light.png" width="100%"
+         alt="Starting a task, and a setup chat, in the reader's own appearance">
+  </picture>
+</p>
+
+<p align="center"><sub>Starting work: a new task on the left, and the same sheet in setup mode —
+which changes Kandev's own settings rather than a task's — on the right.</sub></p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme-connect-dark.png">
+    <img src="assets/readme-connect-light.png" width="100%"
+         alt="Connecting to a server, and starting a chat, in the reader's own appearance">
+  </picture>
+</p>
+
+<p align="center"><sub>Getting in: an address and an optional token, then the same sheet in chat mode,
+which files nothing — it is a conversation.</sub></p>
+
+Captured by `scripts/screenshots` against a live server, then composited by
+`scripts/readme-image` so a README does not render a column of raw phone screens.
+Re-run both after a visual change rather than committing a picture of the app as it was.
+
 ## Requirements
 
 - **iOS 26 / macOS 26**, and Xcode with the matching SDKs. The app is built on
