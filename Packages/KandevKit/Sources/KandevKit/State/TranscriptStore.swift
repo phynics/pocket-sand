@@ -123,12 +123,46 @@ public final class TranscriptStore {
 
     private func loadTranscript(sessionID: String) async throws {
         let page = try await source.messages(sessionID: sessionID, limit: pageLimit, before: nil)
+
+        if sessionID == selectedSessionID {
+            // The same conversation, read again — after a send, or when the screen comes back into
+            // view. This is a refetch, not a fresh look, and the difference matters because the
+            // reader may be holding pages *older* than the one being read: history they asked for.
+            // Replacing the transcript with the newest page threw that away, and their place with
+            // it — they asked for the past and the app handed them the present.
+            mergeNewest(page.messages)
+            // The cursor and the claim about older messages are deliberately untouched: they
+            // describe the oldest message *held*, which a page of the newest does not change.
+            phase = .loaded
+            return
+        }
+
         messages = page.messages
         olderCursor = page.cursor
         hasOlder = page.hasMore
         regroup()
         selectedSessionID = sessionID
         phase = .loaded
+    }
+
+    /// Merges a freshly read page of the newest messages into what is already held.
+    ///
+    /// A message already held is replaced where it sits, so the reader's place in the conversation
+    /// does not move. One that is new goes on the end, which is where it belongs: the transcript
+    /// holds a contiguous run of messages back from the newest, so anything in the newest page that
+    /// is not already held is newer than everything held.
+    private func mergeNewest(_ page: [KandevMessage]) {
+        guard !page.isEmpty else { return }
+        for message in page {
+            if let position = messageIndex[message.id] {
+                messages[position] = message
+            } else {
+                messages.append(message)
+                messageIndex[message.id] = messages.count - 1
+            }
+        }
+        // Once, not per token: a refetch is a read, and the streaming path is `upsert`.
+        regroup()
     }
 
     /// Rebuilds the whole grouping, and the index that makes finding a message cheap.

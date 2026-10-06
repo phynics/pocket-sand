@@ -54,6 +54,10 @@ actor StubTranscriptSource: KandevTranscriptSource {
 
     func failNextMessagesCall() { messagesFailure = Failure.unavailable }
 
+    func setPages(_ pages: [String: KandevMessagePage]) {
+        self.pages = pages
+    }
+
     func setMessages(_ messages: [KandevMessage], forSession sessionID: String) {
         messagesBySession[sessionID] = messages
     }
@@ -500,5 +504,68 @@ struct StreamingPathTests {
             }
         }
         print("BENCH 2000 streamed updates on a 500-message transcript: \(elapsed)")
+    }
+}
+
+/// Reading the conversation again, with history already loaded.
+@MainActor
+@Suite("Transcript refetch")
+struct TranscriptRefetchTests {
+    /// The newest page, and the one before it — keyed by the cursor the server would hand back,
+    /// which is the oldest id in that page.
+    private var pages: [String: KandevMessagePage] {
+        [
+            "": KandevMessagePage(
+                messages: [message("m2", author: "agent", text: "the newer half")],
+                cursor: "m2",
+                hasMore: true
+            ),
+            "m2": KandevMessagePage(
+                messages: [message("m1", author: "user", text: "the older half")],
+                cursor: "m1",
+                hasMore: false
+            ),
+        ]
+    }
+
+    /// A refetch is a read of the newest page, and the reader may be holding pages older than it.
+    /// Replacing the transcript with that page threw their history away and, with it, their place:
+    /// they asked for the past and the app handed them the present.
+    @Test("a refetch keeps the history that was loaded")
+    func refetchKeepsLoadedHistory() async {
+        let source = StubTranscriptSource(
+            task: .success(task),
+            sessions: .success([session("s1", primary: true)]),
+            pages: pages
+        )
+        let store = TranscriptStore(source: source)
+        await store.load(taskID: "t1")
+
+        #expect(await store.loadOlder())
+        #expect(store.turns.flatMap { $0.rows.map(\.text) } == ["the older half", "the newer half"])
+        #expect(store.hasOlder == false)
+
+        // The reader sends something, or the app comes back into view: the newest page is read
+        // again, and it carries a message that was not there before — and one whose text has grown.
+        await source.setPages([
+            "": KandevMessagePage(
+                messages: [
+                    message("m3", author: "agent", text: "the newest of all"),
+                    message("m2", author: "agent", text: "the newer half, edited"),
+                ],
+                cursor: "m2",
+                hasMore: true
+            )
+        ])
+        await store.select(sessionID: "s1", force: true)
+
+        // The history they asked for is still in front of what arrived, and the message that grew
+        // was replaced where it sat rather than moved to the end.
+        #expect(store.turns.flatMap { $0.rows.map(\.text) } == [
+            "the older half", "the newer half, edited", "the newest of all",
+        ])
+        // Nothing older is claimed to exist, because everything older is already held: a page's
+        // cursor and `hasMore` describe that page, not the transcript.
+        #expect(store.hasOlder == false)
     }
 }
