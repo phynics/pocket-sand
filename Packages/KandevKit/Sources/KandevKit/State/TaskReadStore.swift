@@ -32,13 +32,13 @@ public final class TaskReadStore {
         return lastActivity > seen
     }
 
-    /// Records that a task was looked at, as of the activity that was on screen.
+    /// Records that a task was looked at.
     ///
-    /// Stamped with the activity rather than with the clock: a row goes quiet when what was
-    /// read is what the server last reported, and not a second later because two clocks
-    /// disagree.
-    public func markSeen(taskID: String, activity: Date?) {
-        seenAt[taskID] = activity ?? Date()
+    /// Stamped with the later of the activity that was on screen and now. The list keeps its own
+    /// copy of that activity and refreshes it on its own schedule, so it can be a little ahead of
+    /// the conversation's — and a row that stays marked after it has been read is the mark lying.
+    public func markSeen(taskID: String, activity: Date?, now: Date = Date()) {
+        seenAt[taskID] = max(activity ?? .distantPast, now)
         save()
     }
 

@@ -19,15 +19,17 @@ struct TaskListView: View {
     @State private var path: [String] = []
     /// Watching this is how a list that was left open overnight notices the morning.
     @Environment(\.scenePhase) private var scenePhase
-    @State private var isCreatingTask = false
-    @State private var newTask: NewTaskStore?
+    /// The create screen, with an identity of its own.
+    ///
+    /// A sheet's content comes from this one value rather than from a boolean beside a store. A
+    /// presentation that depends on two pieces of state can be asked for before the second one is
+    /// read, which is a blank sheet on the first tap and a correct one on the second.
+    @State private var createSheet: CreateSheet?
     /// The task the create screen just made, and the words to carry into it. A chat
     /// starts a conversation, so its sentence goes on to the composer; a filed task
     /// does not need it, because the server already has the brief.
     @State private var openedTaskID: String?
     @State private var openedSentence = ""
-    /// Which door the create sheet should open on, for a screenshot run.
-    @State private var createSheetMode: NewTaskView.Mode = .task
     @State private var removal: TaskRemovalStore
 
     private var store: TaskListStore { session.taskList }
@@ -124,17 +126,15 @@ struct TaskListView: View {
                 } message: {
                     Text(removalMessage)
                 }
-                .sheet(isPresented: $isCreatingTask, onDismiss: { newTask = nil }) {
-                    if let newTask {
-                        NewTaskView(store: newTask, initialMode: createSheetMode) { opened in
-                            isCreatingTask = false
-                            openedTaskID = opened.taskID
-                            openedSentence = opened.sentence
-                            // Straight to what was just created: refetching the
-                            // list to find it would be slower and could miss it.
-                            path = [opened.taskID]
-                            Task { await store.refresh() }
-                        }
+                .sheet(item: $createSheet) { sheet in
+                    NewTaskView(store: sheet.store, initialMode: sheet.mode) { opened in
+                        createSheet = nil
+                        openedTaskID = opened.taskID
+                        openedSentence = opened.sentence
+                        // Straight to what was just created: refetching the
+                        // list to find it would be slower and could miss it.
+                        path = [opened.taskID]
+                        Task { await store.refresh() }
                     }
                 }
         }
@@ -174,17 +174,18 @@ struct TaskListView: View {
     /// shows up as the sheet "opening again". A tap on a button that has already done
     /// its job should do nothing.
     private func openCreateSheet(mode: NewTaskView.Mode = .task) {
-        guard !isCreatingTask else { return }
-        newTask = NewTaskStore(
-            taskSource: session.client,
-            creator: session.client,
-            profileSource: session.client,
-            chatStarter: session.client,
-            catalogue: session.catalogue,
-            workspaceID: store.workspace?.id
+        guard createSheet == nil else { return }
+        createSheet = CreateSheet(
+            store: NewTaskStore(
+                taskSource: session.client,
+                creator: session.client,
+                profileSource: session.client,
+                chatStarter: session.client,
+                catalogue: session.catalogue,
+                workspaceID: store.workspace?.id
+            ),
+            mode: mode
         )
-        createSheetMode = mode
-        isCreatingTask = true
     }
 
     /// The rows of one section.
@@ -500,4 +501,15 @@ struct TaskListView: View {
             connectionProblem = error.localizedDescription
         }
     }
+}
+
+/// The create sheet's identity and the store it shows.
+///
+/// Its own `Identifiable` rather than the store's: the sheet's lifetime is one presentation, and
+/// a second open is a second identity. This is what makes the presentation atomic — the sheet
+/// exists exactly while there is something to show in it.
+private struct CreateSheet: Identifiable {
+    let id = UUID()
+    let store: NewTaskStore
+    let mode: NewTaskView.Mode
 }

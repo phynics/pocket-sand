@@ -25,7 +25,7 @@ struct TaskReadStoreTests {
     func activityAfterTheLookIsUnread() {
         let store = TaskReadStore(defaults: defaults())
         let noon = Date(timeIntervalSince1970: 1_000_000)
-        store.markSeen(taskID: "t1", activity: noon)
+        store.markSeen(taskID: "t1", activity: noon, now: noon)
 
         #expect(store.isUnread(taskID: "t1", lastActivity: noon) == false)
         #expect(store.isUnread(taskID: "t1", lastActivity: noon.addingTimeInterval(60)))
@@ -40,11 +40,24 @@ struct TaskReadStoreTests {
         #expect(store.isUnread(taskID: "t1", lastActivity: nil) == false)
     }
 
+    /// The list keeps its own copy of the activity and refreshes it on its own schedule, so it can
+    /// be a little ahead of what the conversation read. A row that stays marked after it has been
+    /// read is the mark lying.
+    @Test("looking at a task clears the mark even when the list counted later")
+    func lookingClearsAMarkFromAhead() {
+        let store = TaskReadStore(defaults: defaults())
+        let opened = Date(timeIntervalSince1970: 1_000_000)
+
+        store.markSeen(taskID: "t1", activity: opened.addingTimeInterval(-60), now: opened)
+
+        #expect(store.isUnread(taskID: "t1", lastActivity: opened) == false)
+    }
+
     @Test("it survives a restart")
     func survivesARestart() {
         let defaults = defaults()
         let noon = Date(timeIntervalSince1970: 1_000_000)
-        TaskReadStore(defaults: defaults).markSeen(taskID: "t1", activity: noon)
+        TaskReadStore(defaults: defaults).markSeen(taskID: "t1", activity: noon, now: noon)
 
         let restarted = TaskReadStore(defaults: defaults)
         #expect(restarted.isUnread(taskID: "t1", lastActivity: noon.addingTimeInterval(60)))
