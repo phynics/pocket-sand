@@ -68,12 +68,19 @@ struct MarkdownText: View {
 /// - Turning `InferIsolatedConformances` off: still 97. The diagnostic is not that feature's — it
 ///   fires under the Swift 6 language mode for conformances inferred anywhere.
 /// - `@preconcurrency import MarkdownUI`: still 97.
+/// - Building the theme in a `nonisolated` function that *takes* the five colours, so no builder
+///   reads main-actor state: the warnings drop to 49 but sixty hard errors appear, because SwiftUI's
+///   `View` protocol is main-actor, so `markdownMargin`, `relativeLineSpacing` and the rest are
+///   main-actor too and a nonisolated body cannot call them at all. The two are mutually exclusive:
+///   calling a SwiftUI modifier needs the main actor, and a view built on the main actor is the
+///   thing that warns.
 ///
-/// What is left is to stop using the closure-taking block builders: express as much of the theme as
-/// MarkdownUI allows with its `TextStyle` forms, and keep closures only for the blocks that
-/// genuinely need a view — a blockquote's rule, a code block's scroll view, a table. That trades
-/// the app's own divider, its margins and its table paint for a quiet build, which is a decision
-/// about how the transcript looks and not one to take silently.
+/// What is left is the only thing that can work, and it is a design decision rather than a fix:
+/// stop customising the blocks. Keep `.text` and `.code` — the `TextStyle` builders, which are
+/// quiet — and drop every closure that returns a view, which means giving up the headings' sizes and
+/// margins, the paragraph leading, the blockquote's rule, the code block's background and scroll
+/// view, the app's own thematic-break divider, and the table's borders and paint. That is most of
+/// what the agent's page is, traded for a quiet build, and it is not mine to trade.
 @MainActor
 extension MarkdownUI.Theme {
     /// The agent's page, set in this app's own hands.
