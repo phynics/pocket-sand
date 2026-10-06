@@ -95,22 +95,28 @@ the face to change is the chrome's, not the agent's.
 
 No cards anywhere. Structure comes from rules, a shared left edge, and space.
 
-A **voice**, though, is not structure. A person's message is filled with the surface
-step, edge to edge — a band. An agent's answer is the paper itself, lifted off it by
-two shadows: light from the top left, shade thrown down to the bottom right.
+A **voice**, though, is not structure. The two voices of the transcript speak in the same block —
+one width, one shape, one corner — and the whole of the difference is which way the light falls on
+it. An agent's answer is a sheet raised off the page: light from the top left, shade thrown to the
+bottom right. A person's question is pressed into it, which is the shape it arrived in, because it
+is the same well the composer is. The two share one paint, so they cannot drift apart; and an agent
+that asks a question of its own speaks in the well too, because a question is a question.
 
-Neither is a card. A card is a container *for* structure and has an edge of its own;
-a plate's fill is the paper it lies on, so the only thing marking where it begins is
-the light, and no line is drawn across the page. It is also the one depth treatment
-that cannot cost contrast — the words stay ink on paper and the whole of the depth is
-outside them — which is what lets it go on the one voice that arrives by the page.
-The two blocks also share a width: the band and the plate both bleed the same twelve
-points into the gutter, so both voices' text starts on the same edge.
+Neither is a card. A card is a container *for* structure and has an edge of its own; a block's fill
+is the material it lies in, so the only thing marking where it begins is the light, and no line is
+drawn across the page. It is also the one depth treatment that cannot cost contrast — the words stay
+ink on paper and the whole of the depth is outside them — which is what lets it carry a page of
+answer without competing with the question it answers.
 
-In the dark the shadows cannot work, and for a reason worth writing down: a shadow
-needs a surface to fall on, and true black has none. The dark plate rises a step in
-its own fill instead and carries the light along its top edge — the same move the
-field well makes from the other direction.
+Both blocks reach twelve points past the transcript's gutter and are padded inside by the same
+twelve, so every voice starts on one left edge: a question, an answer, and the steps between them.
+That reclaims twelve of the gutter's sixteen points and leaves four, which is what the narrowest
+phone this runs on needs.
+
+In the dark the shadows cannot work, and for a reason worth writing down: a shadow needs a surface
+to fall on, and true black has none. So each block moves itself instead — the sheet rises a step in
+its fill, and the well keeps the `surface` step it has always had, because there is no below-black
+to press into — and the fill's own light says which is which.
 
 - **A task's step is a 3pt spine at the screen's leading edge**, in the step's own
   colour — not a filled pill. Scanning down the list gives a colour column rather
@@ -475,8 +481,10 @@ thing that is in the way**.
   shows the agent and no step. Fixing it means the detail screen loading its own
   steps.
 - The list, the transcript and the create screen have been looked at on an iPhone, and
-  the create screen at the accessibility text sizes.
-  **The archive view, the connect screen, the step menu and the session picker have
-  not been seen at all.** Nor has anything on this screen been *driven*: the menus,
-  the doors and the setup chat were built and never tapped, because a simulator has
-  no tap command and creating a task is a write against someone's server.
+  the create screen at the accessibility text sizes. **The connect screen has now been
+  seen, in both appearances and against a live server** — it was the one screen whose
+  text fields were still bordered rectangles rather than the app's well, which is fixed.
+  **The archive view, the step menu and the session picker have not been seen at all.**
+  Nor has anything on this screen been *driven*: the menus, the doors and the setup chat
+  were built and never tapped, because a simulator has no tap command and creating a
+  task is a write against someone's server.

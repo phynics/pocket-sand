@@ -84,8 +84,12 @@ struct ConnectView: View {
                 .foregroundStyle(Theme.ink)
                 .textFieldStyle(.plain)
                 .autocorrectionDisabled()
-                .padding(Theme.Space.snug + 2)
-                .overlay(Rectangle().stroke(Theme.rule, lineWidth: 1))
+                // The same well the composer and the brief are, and the same one a question in the
+                // transcript is. A field is the one place this app fills a container, and a text
+                // field is a text field wherever it is: this screen was drawn as a bordered
+                // rectangle before anything here had been looked at.
+                .padding(Theme.Space.base)
+                .fieldWell()
                 .onSubmit(connect)
                 #if os(iOS)
                 .keyboardType(.URL)

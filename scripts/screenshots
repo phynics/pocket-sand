@@ -155,6 +155,12 @@ for appearance in $APPEARANCES; do
             suffix=""
             [ -n "${SCROLL:-}" ] && suffix="-$SCROLL"
             file="$OUT/$screen-$appearance-$size$suffix.png"
+            # A beat after the screen says it has settled, because the marker can be written
+            # while the system is still fading the window in. One run photographed the connect
+            # screen mid-fade: every word on it washed out, with the title's darkest pixel 40
+            # shades off ink. The marker still decides *when*; this only lets the launch
+            # animation finish, which is the one part of a screen that says nothing about it.
+            sleep 0.4
             xcrun simctl io "$DEVICE" screenshot "$file" >/dev/null 2>&1
             captured=$((captured + 1))
 

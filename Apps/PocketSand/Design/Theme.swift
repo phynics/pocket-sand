@@ -247,65 +247,89 @@ extension View {
         modifier(FieldWell(shape: AnyShape(RoundedRectangle(cornerRadius: 18, style: .continuous))))
     }
 
-    /// Lifts a block off the paper, so it reads as a sheet rather than as a run of text.
+    /// The block one voice speaks in.
     ///
-    /// For an agent's answer, which is the one voice with no mark of its own: a question is a band,
-    /// a step is a glyph, a failure is a glyph in red, and an answer was simply prose at the width
-    /// of everything else.
-    func raisedPlate(cornerRadius: CGFloat = 12) -> some View {
-        modifier(RaisedPlate(cornerRadius: cornerRadius))
+    /// `.raised` for an agent's answer, `.pressed` for a person's question. Same shape, same width,
+    /// same light — the only difference is which way it falls, which is all this app needs to say
+    /// about who is talking.
+    func messageBlock(_ depth: MessageBlock.Depth, cornerRadius: CGFloat = 12) -> some View {
+        modifier(MessageBlock(depth: depth, cornerRadius: cornerRadius))
+    }
+}
+
+/// The paint of a well: a recessed panel, tinted towards the ink in light and towards the light in
+/// dark, with a polish along its top edge.
+///
+/// Shared rather than written twice, because the composer's field, the brief on the create sheet
+/// and a question in the transcript are the same object — a place words go in. Three wells
+/// differing by a few percent of tint would read as three different materials, and the transcript
+/// asks you to believe they are one.
+struct WellPaint: View {
+    let shape: AnyShape
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        shape
+            .fill(
+                colorScheme == .dark
+                    ? Color.white.opacity(0.06)
+                    : Theme.ink.opacity(0.045)
+            )
+            .overlay {
+                shape
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(colorScheme == .dark ? 0.22 : 0.9),
+                                Color.white.opacity(colorScheme == .dark ? 0.04 : 0.15),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 1
+                    )
+                    .blendMode(colorScheme == .dark ? .plusLighter : .normal)
+            }
     }
 }
 
 private struct FieldWell: ViewModifier {
     let shape: AnyShape
 
-    @Environment(\.colorScheme) private var colorScheme
-
     func body(content: Content) -> some View {
-        content.background {
-            shape
-                .fill(
-                    colorScheme == .dark
-                        ? Color.white.opacity(0.06)
-                        : Theme.ink.opacity(0.045)
-                )
-                .overlay {
-                    shape
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(colorScheme == .dark ? 0.22 : 0.9),
-                                    Color.white.opacity(colorScheme == .dark ? 0.04 : 0.15),
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ),
-                            lineWidth: 1
-                        )
-                        .blendMode(colorScheme == .dark ? .plusLighter : .normal)
-                }
-        }
+        content.background { WellPaint(shape: shape) }
     }
 }
 
-/// A plate of the same paper, raised off it.
+/// One voice's block: a sheet standing off the paper, or a well pressed into it.
 ///
-/// Two shadows at opposite corners — light from the top left, shade thrown down to the bottom
-/// right — which is the whole of neumorphism, and the reason it belongs here. The plate is filled
-/// with the paper itself: no second colour, no border, nothing that would make it a box in an app
-/// whose structure is drawn with rules. What sets an agent's answer apart from the rows around it
-/// is its edges alone, and an edge made of light is the one kind that does not cut the column in
-/// two.
+/// Two shadows at opposite corners, and which way round they go is the whole of the difference
+/// between the two voices. Light from the top left with the shade thrown to the bottom right reads
+/// as a sheet raised off the page; the same two swapped read as a panel pushed into it. An agent's
+/// answer is raised — it was produced for you — and a person's question is pressed, which is the
+/// shape it arrived in: the same well the composer is, because that is where it was typed.
 ///
-/// It costs nothing in contrast, which is what makes it safe on the one voice that arrives by the
-/// page. The words stay ink on paper; every bit of the depth is outside them.
+/// Neither is a card. A card is a container *for* structure and has an edge of its own; a block's
+/// fill is the material it lies in, so the only thing marking where it begins is the light and no
+/// line is drawn across the page. It is also the one depth treatment that cannot cost contrast —
+/// the words stay ink on paper and all of the depth is outside them — which is what lets it carry
+/// a whole answer without competing with the question it answers.
 ///
-/// On paper the two shadows do the whole job. On black they cannot: a shadow needs a surface to
-/// fall on, and true black has none, so the dark plate rises a step in its own fill and carries
-/// the light along its top edge instead. That is the same move `fieldWell` makes from the other
-/// direction, and for the same reason — a material tells you about itself by where the light is.
-struct RaisedPlate: ViewModifier {
+/// **On paper the shadows do the whole job. On black they cannot**: a shadow needs a surface to
+/// fall on, and true black has none. So the dark blocks move themselves instead — the sheet rises
+/// a step in its fill and the well sinks one — and the fill's own light says which is which. That
+/// is the move `fieldWell` makes from the other direction, and for the same reason: a material
+/// tells you about itself by where the light is.
+struct MessageBlock: ViewModifier {
+    enum Depth {
+        /// An agent's answer: a sheet of the paper, standing off it.
+        case raised
+        /// A person's question: the paper pressed in, with the light under its near edge.
+        case pressed
+    }
+
+    let depth: Depth
     var cornerRadius: CGFloat = 12
 
     @Environment(\.colorScheme) private var colorScheme
@@ -313,34 +337,68 @@ struct RaisedPlate: ViewModifier {
 
     /// Subtle on purpose. A shadow you can point at has stopped being depth and become a drawing
     /// of a shadow; two points of offset under a six-point blur is a soft edge, and a soft edge is
-    /// all a sheet needs to sit above the page.
+    /// all a block needs to say which side of the paper it is on.
     private static let offset: CGFloat = 2
     private static let blur: CGFloat = 6
 
+    /// How far the block reaches past the transcript's gutter — and, because the padding inside is
+    /// the same number, how much of the page it takes from the margin rather than from the words.
+    ///
+    /// The gutter is `Theme.Space.loose` and `Theme.Space.base` of it is reclaimed, which leaves
+    /// four points of margin on the narrowest phone this runs on. The payoff is that every voice
+    /// starts on one left edge: a question, an answer, and the steps between them.
+    private static let reach: CGFloat = Theme.Space.base
+
     func body(content: Content) -> some View {
-        content.background { plate }
+        content
+            .padding(Theme.Space.base)
+            .background { block }
+            // After the background, and that order is the whole trick: the panel is measured from
+            // the words, and only then is the whole of it let out past the gutter. Reversed, the
+            // panel shrinks and the words are left sitting outside their own block.
+            .padding(.horizontal, -Self.reach)
     }
 
     private var shape: RoundedRectangle {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
     }
 
-    private var plate: some View {
+    private var block: some View {
         ZStack {
-            Theme.paper
-            if colorScheme == .light {
-                // The grain, so the plate is the same paper rather than a smoother one. A texture
-                // that stopped at the plate's edge would read as a patch stuck to the page, which
-                // is the one thing worse than no edge at all.
-                if let tile = PaperTexture.tile {
-                    Image(decorative: tile, scale: displayScale)
-                        .resizable(resizingMode: .tile)
-                        .allowsHitTesting(false)
-                }
+            fill
+            // The grain, so a block is the same paper rather than a smoother one. A texture that
+            // stopped at an edge would read as a patch stuck to the page, which is worse than no
+            // edge at all.
+            if colorScheme == .light, let tile = PaperTexture.tile {
+                Image(decorative: tile, scale: displayScale)
+                    .resizable(resizingMode: .tile)
+                    .allowsHitTesting(false)
+            }
+        }
+        .clipShape(shape)
+        .shadow(color: far, radius: Self.blur, x: farOffset.x, y: farOffset.y)
+        .shadow(color: near, radius: Self.blur, x: nearOffset.x, y: nearOffset.y)
+    }
+
+    @ViewBuilder private var fill: some View {
+        if depth == .pressed {
+            // A question and the field it was typed into are one object, so in the light they wear
+            // one paint.
+            if colorScheme == .dark {
+                // On black there is no below-black to press into, so the block keeps the step
+                // `surface` has always given a panel here. A well that cannot be pressed is only a
+                // lighter panel — and then it should be a decisively lighter one, because a
+                // question is the heavier of the two blocks in both appearances, and two panels
+                // within a couple of percent of each other say nothing about who is talking.
+                Theme.surface
             } else {
-                // A step up from black instead of a shadow on it, and deliberately short of
-                // `surface`, so a code block inside an answer is still the lighter of the two and
-                // a well does not disappear into the sheet it was drawn on.
+                WellPaint(shape: AnyShape(shape))
+            }
+        } else {
+            Theme.paper
+            if colorScheme == .dark {
+                // A step up from black rather than a shadow on it, and deliberately short of
+                // `surface`, so a code block inside an answer stays the lighter of the two.
                 LinearGradient(
                     colors: [Color.white.opacity(0.07), Color.white.opacity(0.028)],
                     startPoint: .top,
@@ -348,29 +406,30 @@ struct RaisedPlate: ViewModifier {
                 )
             }
         }
-        // Clipped to the shape first, so the shadows take its silhouette rather than the rectangle
-        // the fill happens to be.
-        .clipShape(shape)
-        .shadow(color: shade, radius: Self.blur, x: Self.offset, y: Self.offset)
-        .shadow(color: lift, radius: Self.blur, x: -Self.offset, y: -Self.offset)
     }
 
-    /// The light, from the top left.
-    ///
-    /// A whisper of white would do nothing on paper, which is nearly white already, so it is
-    /// nearly white in full. On black the same white is a lamp — the paper is not there to absorb
-    /// it — and a fiftieth of the strength says the same thing.
-    private var lift: Color {
+    /// Where the light lands, as opposed to where it comes from. A raised block throws its shade
+    /// away from the light; a well catches it under the near edge, which is the same shadow read
+    /// the other way round.
+    private var nearOffset: CGPoint {
+        let d = Self.offset
+        return depth == .raised ? CGPoint(x: -d, y: -d) : CGPoint(x: d, y: d)
+    }
+
+    private var farOffset: CGPoint {
+        CGPoint(x: -nearOffset.x, y: -nearOffset.y)
+    }
+
+    /// The light. Nearly white in full on paper, which is nearly white already; on black the same
+    /// white is a lamp, so it is a fiftieth of the strength.
+    private var near: Color {
         colorScheme == .dark ? Color.white.opacity(0.06) : Color.white.opacity(0.9)
     }
 
-    /// The shade, thrown down to the bottom right.
-    ///
-    /// Ink rather than black: this is the only thing marking where the plate ends and the paper
-    /// begins, so it has to be findable without being seen, and it is the app's own ink softened
-    /// rather than a grey invented for the job. In the dark there is nothing to cast it on, so
-    /// there is no shade at all — the lift and the lit edge are the depth.
-    private var shade: Color {
+    /// The shade, thrown to the far corner. Ink rather than black: it is the only thing marking
+    /// where a raised block ends, so it has to be findable without being seen. In the dark there is
+    /// nothing to cast it on, so there is none, and the fill carries the depth alone.
+    private var far: Color {
         colorScheme == .dark ? .clear : Theme.ink.opacity(0.12)
     }
 }

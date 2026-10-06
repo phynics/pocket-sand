@@ -556,20 +556,18 @@ struct TranscriptRowView: View {
     var body: some View {
         switch row.kind {
         case .prompt:
+            // A person's question, in the same well the composer is: it is where the words came
+            // in, and it is set into the page for that reason.
             prose
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(Theme.Space.base)
-                .background(Theme.surface)
+                .messageBlock(.pressed)
 
         case .reply:
-            // The plate bleeds the same twelve points into the gutter that a question's band
-            // does, which puts both voices' text on the same edge and lines the two blocks up at
-            // each end. A plate that kept its own padding inside the column would indent the
-            // agent's words by it, and this screen is a column before it is anything else.
+            // And the answer standing off it. Same block, same width, same light; the two differ
+            // only in which way it falls.
             prose
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(Theme.Space.base)
-                .raisedPlate()
+                .messageBlock(.raised)
 
         case .thinking, .tool, .read, .script:
             // One line, always, and the row is the control that opens it where there
@@ -813,9 +811,10 @@ private struct AskCard: View {
                 settled
             }
         }
-        .padding(Theme.Space.base)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface)
+        // An agent asking a question is still a question, so it speaks in the same block a person's
+        // question does rather than in a flat panel of its own. It was the last one left.
+        .messageBlock(.pressed)
         .accessibilityElement(children: .contain)
     }
 
