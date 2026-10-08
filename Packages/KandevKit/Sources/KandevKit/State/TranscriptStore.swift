@@ -65,6 +65,7 @@ public final class TranscriptStore {
     private var stepNames: [String: String]
 
     public func load(taskID: String) async {
+        let before = phase
         phase = .loading
         do {
             let task = try await source.task(id: taskID)
@@ -90,7 +91,7 @@ public final class TranscriptStore {
             hasNoSession = false
             try await loadTranscript(sessionID: session.id)
         } catch {
-            phase = .failed(KandevError.readableMessage(for: error))
+            settle(after: error, restoring: before)
         }
     }
 
@@ -103,13 +104,31 @@ public final class TranscriptStore {
     /// when `force` is set — which is how a sent prompt becomes visible.
     public func select(sessionID: String, force: Bool = false) async {
         guard force || sessionID != selectedSessionID else { return }
+        let before = phase
         phase = .loading
         do {
             try await loadTranscript(sessionID: sessionID)
         } catch {
-            phase = .failed(KandevError.readableMessage(for: error))
+            settle(after: error, restoring: before)
         }
     }
+
+    /// Records the end of a read that threw.
+    ///
+    /// A cancelled read is not a failed one. SwiftUI cancels a refresh when the content it is
+    /// refreshing changes, and the request inside it then throws `URLError(.cancelled)`. Showing that
+    /// as a failure put "cancelled" in front of a reader who had only pulled to refresh. A cancelled
+    /// read leaves the transcript as it was and goes back to the phase it started from, so a screen
+    /// that never loaded is still idle and loads when it next appears.
+    private func settle(after error: any Error, restoring before: Phase) {
+        guard KandevError.isCancellation(error) else {
+            phase = .failed(KandevError.readableMessage(for: error))
+            return
+        }
+        phase = before == .loading ? .idle : before
+    }
+
+    /// The session currently open, if any.
 
     /// The session a task opens on: the one it calls primary, else the one the
     /// task points at, else the first.

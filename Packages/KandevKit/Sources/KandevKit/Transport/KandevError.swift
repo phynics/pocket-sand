@@ -108,6 +108,17 @@ extension KandevError: LocalizedError {
         return nil
     }
 
+    /// Whether an error is the caller giving up on a request, rather than the server or the network
+    /// failing.
+    ///
+    /// A cancelled `URLSession` request throws `URLError(.cancelled)` unwrapped, and its
+    /// `localizedDescription` is the word "cancelled". A store that shows that as a failure puts it in
+    /// front of someone who only pulled to refresh, so stores check this before they record one.
+    public static func isCancellation(_ error: any Error) -> Bool {
+        if error is CancellationError { return true }
+        return (error as? URLError)?.code == .cancelled
+    }
+
     /// A message fit to show someone, for any error at all.
     ///
     /// Every store needs this, and three of them had grown their own copy.

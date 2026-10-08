@@ -52,7 +52,7 @@ actor StubTranscriptSource: KandevTranscriptSource {
         return KandevMessagePage(messages: messagesBySession[sessionID] ?? [], cursor: nil, hasMore: false)
     }
 
-    func failNextMessagesCall() { messagesFailure = Failure.unavailable }
+    func failNextMessagesCall(with error: any Error = Failure.unavailable) { messagesFailure = error }
 
     func setPages(_ pages: [String: KandevMessagePage]) {
         self.pages = pages
@@ -348,6 +348,64 @@ struct TranscriptStoreTests {
         if case .failed = store.phase {} else {
             Issue.record("expected a failed phase, got \(store.phase)")
         }
+    }
+
+    /// Pulling to refresh cancels the request in it, and that is not a failure. The transcript the
+    /// reader is looking at stays, and nothing about the cancellation reaches the screen.
+    @Test("a cancelled reload keeps the transcript and reports nothing")
+    func cancelledReloadKeepsTranscript() async {
+        let (store, source) = await loaded(
+            sessions: [session("s1", primary: true)],
+            messages: ["s1": [message("m1", author: "user", text: "hello")]]
+        )
+        await source.failNextMessagesCall(with: URLError(.cancelled))
+
+        await store.load(taskID: "t1")
+
+        #expect(store.phase == .loaded)
+        #expect(store.turns.flatMap { $0.rows.map(\.text) } == ["hello"])
+        #expect(store.selectedSessionID == "s1")
+        #expect(store.sessions.count == 1)
+    }
+
+    /// The same rule for the refetch after a send, which goes through `select(force:)`, and for the
+    /// Swift cancellation error rather than the URL one. The history the reader asked for is kept.
+    @Test("a cancelled refetch keeps the history that was loaded and reports nothing")
+    func cancelledRefetchKeepsHistory() async {
+        let (store, source) = await loaded(
+            sessions: [session("s1", primary: true)],
+            pages: pagedConversation()
+        )
+        #expect(await store.loadOlder())
+        let before = store.turns.flatMap { $0.rows.map(\.text) }
+
+        await source.failNextMessagesCall(with: CancellationError())
+        await store.select(sessionID: "s1", force: true)
+
+        #expect(store.phase == .loaded)
+        #expect(store.turns.flatMap { $0.rows.map(\.text) } == before)
+        #expect(store.hasOlder == false)
+    }
+
+    /// A screen that has never loaded must not be left looking loaded or failed by a cancelled
+    /// first read. Back at idle, its `.task` loads it again when it next appears.
+    @Test("a cancelled first load leaves the store idle so it can load again")
+    func cancelledFirstLoadStaysIdle() async {
+        let source = StubTranscriptSource(
+            task: .success(task),
+            sessions: .success([session("s1", primary: true)]),
+            messages: ["s1": [message("m1", author: "user", text: "hello")]]
+        )
+        let store = TranscriptStore(source: source)
+        await source.failNextMessagesCall(with: CancellationError())
+
+        await store.load(taskID: "t1")
+        #expect(store.phase == .idle)
+        #expect(store.turns.isEmpty)
+
+        await store.load(taskID: "t1")
+        #expect(store.phase == .loaded)
+        #expect(store.turns.flatMap { $0.rows.map(\.text) } == ["hello"])
     }
 
     @Test("groups several sessions' worth of turns in the order the server sent them")

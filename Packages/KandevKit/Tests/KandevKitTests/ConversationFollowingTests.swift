@@ -416,6 +416,20 @@ struct TaskConversationFollowingTests {
         }
     }
 
+    /// A cancelled refresh reloads the transcript and then rebinds and resubscribes. The screen must
+    /// still be following afterwards, and must not report the cancellation.
+    @Test("a cancelled reload keeps following and reports nothing")
+    func cancelledReloadKeepsFollowing() async {
+        let (store, transcriptSource, _, _) = await loaded()
+        await transcriptSource.failNextMessagesCall(with: URLError(.cancelled))
+
+        await store.load(taskID: "t1")
+
+        #expect(store.isFollowing)
+        #expect(store.transcript.phase == .loaded)
+        #expect(store.composer.identity?.sessionID == "s1")
+    }
+
     @Test("stopping unsubscribes")
     func stoppingUnsubscribes() async {
         let (store, _, _, stream) = await loaded()

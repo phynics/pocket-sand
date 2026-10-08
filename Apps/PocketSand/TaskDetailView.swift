@@ -175,7 +175,12 @@ struct TaskDetailView: View {
             }
             // A conversation reads newest-last, so it opens at the bottom.
             .defaultScrollAnchor(.bottom)
-            .refreshable { await conversation.load(taskID: taskID) }
+            .refreshable {
+                // Unstructured, and awaited: SwiftUI cancels the task a refresh runs in when the
+                // content it refreshes changes, and a load changes it. That cancelled the request
+                // the refresh was waiting on. The await still holds the spinner until the load ends.
+                await Task { await conversation.load(taskID: taskID) }.value
+            }
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
                 Task { await conversation.refreshIfDue() }
