@@ -38,6 +38,10 @@ struct TaskListView: View {
     @State private var openedTaskID: String?
     @State private var openedSentence = ""
     @State private var removal: TaskRemovalStore
+    /// The floating new-task button's glyph and circle, in points at the default size. Scaled with
+    /// the text, and capped where `newTaskButton` uses them.
+    @ScaledMetric(relativeTo: .body) private var newTaskGlyphPoints: CGFloat = 20
+    @ScaledMetric(relativeTo: .body) private var newTaskFramePoints: CGFloat = 52
 
     private var store: TaskListStore { session.taskList }
 
@@ -472,10 +476,13 @@ struct TaskListView: View {
         Button {
             openCreateSheet()
         } label: {
+            // Scaled with the text, but capped: at the accessibility sizes an uncapped 52pt circle
+            // is roughly 100pt across and fills a phone's lower corner. 76pt keeps it a thumb-sized
+            // control, and the glyph cap holds the default 20-of-52 ratio.
             Image(systemName: "plus")
-                .font(.system(size: 20, weight: .medium))
+                .font(.system(size: min(newTaskGlyphPoints, 29), weight: .medium))
                 .foregroundStyle(Theme.ink)
-                .frame(width: 52, height: 52)
+                .frame(width: min(newTaskFramePoints, 76), height: min(newTaskFramePoints, 76))
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)

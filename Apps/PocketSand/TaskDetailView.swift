@@ -46,6 +46,17 @@ struct TaskDetailView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
+    /// The composer's action glyph and its frame, in points at the default size. They scale with
+    /// the text beside them, so the button keeps its proportion as the field's text grows.
+    @ScaledMetric(relativeTo: .body) private var actionGlyphPoints: CGFloat = 15
+    @ScaledMetric(relativeTo: .body) private var actionFramePoints: CGFloat = 22
+    /// The most the action button grows to. Uncapped, the 22pt frame reaches about 43pt at the
+    /// accessibility sizes, and a button that tall is a second line of chrome beside the field.
+    /// 44pt is the smallest tap target the platform accepts, so this is the size the button is
+    /// already meant to be; the glyph cap keeps the default glyph-to-frame ratio (15 of 22).
+    private static let actionFrameCap: CGFloat = 44
+    private static let actionGlyphCap: CGFloat = 30
+
     init(
         taskID: String,
         source: any KandevConversationServer,
@@ -721,9 +732,12 @@ struct TaskDetailView: View {
     ) -> some View {
         Button(action: perform) {
             Image(systemName: systemName)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: min(actionGlyphPoints, Self.actionGlyphCap), weight: .semibold))
                 .foregroundStyle(tint)
-                .frame(width: 22, height: 22)
+                .frame(
+                    width: min(actionFramePoints, Self.actionFrameCap),
+                    height: min(actionFramePoints, Self.actionFrameCap)
+                )
                 .contentShape(Circle())
         }
         // The button style is the glass. Adding `.glassEffect` on top of it stacks two
