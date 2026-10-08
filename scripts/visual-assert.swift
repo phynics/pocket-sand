@@ -114,8 +114,11 @@ for expected in expectations[key] ?? [] {
 //    token placeholder is one: `kandev_pat_…` stands for a credential nobody should be
 //    shown the shape of, so it is *meant* to be cut. It is matched by prefix, because
 //    the scanner renders an ellipsis as one character or three depending on the mood.
+//    A line that is *only* an ellipsis is not cut text at all: it is the "more" glyph in a
+//    toolbar, which the scanner reads as three dots. It has nothing before it to have lost.
 let expectedTruncation = expectations["_expectedTruncation"] ?? []
 for line in lines where line.text.hasSuffix("…") || line.text.range(of: #"\.\.+$"#, options: .regularExpression) != nil {
+    if line.text.trimmingCharacters(in: CharacterSet(charactersIn: ".… ")).isEmpty { continue }
     let isExpected = expectedTruncation.contains { allowed in
         line.text.hasPrefix(allowed.replacingOccurrences(of: "…", with: ""))
     }
