@@ -13,6 +13,8 @@ struct ConnectView: View {
 
     @State private var urlString: String
     @State private var token = ""
+    @State private var isTokenVisible = false
+    @ScaledMetric(relativeTo: .callout) private var revealRoom: CGFloat = 28
     @State private var problem: String?
 
     init(servers: ServerBookmarkStore, onConnect: @escaping (ServerBookmark) -> Void) {
@@ -61,8 +63,61 @@ struct ConnectView: View {
     private var address: some View {
         VStack(alignment: .leading, spacing: Theme.Space.base) {
             field("Server address", text: $urlString, prompt: "http://kandev.local:38429")
-            field("Access token, if the server wants one", text: $token, prompt: "kandev_pat_…")
+            tokenField
         }
+    }
+
+    /// The token is a credential, so it is masked: a shoulder, a recording or a screenshot should
+    /// not carry it. It can be revealed, because it is checked character by character, as the
+    /// address is, which is why it is the same mono face in the same well. Only the glyph at the
+    /// trailing edge changes between the two states.
+    private var tokenField: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.hair + 2) {
+            Text("Access token, if the server wants one")
+                .font(Theme.Face.chrome(.footnote))
+                .foregroundStyle(Theme.muted)
+            Group {
+                if isTokenVisible {
+                    TextField("", text: $token, prompt: tokenPrompt)
+                } else {
+                    SecureField("", text: $token, prompt: tokenPrompt)
+                }
+            }
+            .font(Theme.Face.machine(.callout))
+            .foregroundStyle(Theme.ink)
+            .textFieldStyle(.plain)
+            .autocorrectionDisabled()
+            // The room the reveal glyph takes at the trailing edge, so a long token stops short of it.
+            .padding(.leading, Theme.Space.base)
+            .padding(.vertical, Theme.Space.base)
+            .padding(.trailing, Theme.Space.base + revealRoom)
+            .fieldWell()
+            .overlay(alignment: .trailing) { revealButton }
+            .onSubmit(connect)
+            #if os(iOS)
+            .textInputAutocapitalization(.never)
+            #endif
+        }
+    }
+
+    private var tokenPrompt: Text {
+        Text("kandev_pat_…").foregroundStyle(Theme.muted)
+    }
+
+    /// A 44pt target, drawn as a glyph. It is an overlay on the well rather than part of its
+    /// padding, so a larger target cannot make the token well taller than the address well.
+    private var revealButton: some View {
+        Button {
+            isTokenVisible.toggle()
+        } label: {
+            Image(systemName: isTokenVisible ? "eye.slash" : "eye")
+                .font(Theme.Face.chrome(.callout))
+                .foregroundStyle(Theme.muted)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isTokenVisible ? "Hide token" : "Show token")
     }
 
     /// Mono, because an address and a token are machine strings. A proportional
