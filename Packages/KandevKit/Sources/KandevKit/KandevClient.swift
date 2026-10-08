@@ -33,10 +33,6 @@ public struct KandevClient: Sendable {
         self.hub = KandevNotificationHub(source: TransportNotifications(transport: transport))
     }
 
-    /// Prefer the hub. This is for a caller that genuinely wants raw frames and
-    /// promises to be the only reader.
-    public var notifications: AsyncStream<KandevEnvelope> { transport.notifications }
-
     public func connect() async throws {
         try await transport.connect()
         // Started after the socket is up so no frame is read before the hub is
@@ -319,8 +315,6 @@ public struct KandevClient: Sendable {
         )
     }
 
-
-
     /// Every agent profile this server can run.
     ///
     /// HTTP, not the socket: the profile catalogue is not a `/ws` action.
@@ -396,21 +390,6 @@ public struct KandevClient: Sendable {
         )
     }
 
-    /// The preflight's body, which has its own name because the interesting thing about it is what
-    /// is *not* in it.
-    ///
-    /// The pinned release line's preflight decodes with `DisallowUnknownFields` and knows two
-    /// fields, `task_ids` and `cascade`. A body carrying `discard_worktree_changes: false` is
-    /// therefore refused outright as an invalid request — and that refusal is a *failed delete of
-    /// every task*, quick chat or otherwise, because the ticket this answers with is what the
-    /// delete route demands afterwards. Nothing could be removed at all.
-    ///
-    /// Sent only when it is being asked for, which is not the same as sending `false`. The field
-    /// arrived after the pin: only a server that knows it can answer `requires_discard_consent`,
-    /// and only such a server ever reaches the re-ask with it set. On the pinned version that
-    /// branch is unreachable and the flag is never sent, so the version that cannot read it is
-    /// never asked to.
-
     /// Deletes a task.
     ///
     /// Refused — for every task — without the confirmation ticket a preflight answered with. A
@@ -439,6 +418,20 @@ public struct KandevClient: Sendable {
         )
     }
 
+    /// The preflight's body, which has its own name because the interesting thing about it is what
+    /// is *not* in it.
+    ///
+    /// The pinned release line's preflight decodes with `DisallowUnknownFields` and knows two
+    /// fields, `task_ids` and `cascade`. A body carrying `discard_worktree_changes: false` is
+    /// therefore refused outright as an invalid request — and that refusal is a *failed delete of
+    /// every task*, quick chat or otherwise, because the ticket this answers with is what the
+    /// delete route demands afterwards. Nothing could be removed at all.
+    ///
+    /// Sent only when it is being asked for, which is not the same as sending `false`. The field
+    /// arrived after the pin: only a server that knows it can answer `requires_discard_consent`,
+    /// and only such a server ever reaches the re-ask with it set. On the pinned version that
+    /// branch is unreachable and the flag is never sent, so the version that cannot read it is
+    /// never asked to.
     static func deletePreflightPayload(
         taskIDs: [String],
         cascadeSubTasks: Bool,
@@ -522,7 +515,6 @@ public struct KandevClient: Sendable {
         }
     }
 }
-
 
 /// The transport's notifications, shaped as the hub's source.
 private struct TransportNotifications: KandevNotificationHub.Source {

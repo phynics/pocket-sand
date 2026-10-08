@@ -265,7 +265,6 @@ public final class ComposerStore {
             sessionIncarnationID: identity.sessionIncarnationID
         )
         if queue?.isFull == true, let limit = queue?.max {
-            if case .failed = phase { phase = .idle }
             phase = .full(limit: limit)
         } else if case .full = phase {
             // Room again, so stop explaining the limit.

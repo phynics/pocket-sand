@@ -110,7 +110,8 @@ extension KandevTask {
 
 extension TaskRow {
     /// Builds a row from a task and the steps known so far.
-    init(task: KandevTask, steps: [String: KandevWorkflowStep]) {        let step = task.workflowStepID.flatMap { steps[$0] }
+    init(task: KandevTask, steps: [String: KandevWorkflowStep]) {
+        let step = task.workflowStepID.flatMap { steps[$0] }
         self.init(
             id: task.id,
             title: task.title,

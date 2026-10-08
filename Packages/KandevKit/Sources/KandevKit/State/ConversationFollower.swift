@@ -38,8 +38,6 @@ public protocol KandevLiveConversations: KandevConversationStreaming {
     var hub: KandevNotificationHub { get }
 }
 
-/// Everything a conversation screen needs from a server: read it, write to it,
-/// and hear about changes.
 /// Fetching one shell call's full output, which message payloads leave out.
 ///
 /// Narrower than the whole server: an output disclosure needs no way to write anything.
