@@ -53,6 +53,10 @@ struct TaskRowView: View {
                 }
             }
         }
+        // The full width, and a shape to match: a plain button is hit only where it draws, so
+        // without these a tap had to land on the words, and the space beside a short title did
+        // nothing.
+        .frame(maxWidth: .infinity, alignment: .leading)
         // The padding is inside the background, so the spine spans the row's height
         // and starts at the very edge of the screen — which is what turns a column of
         // separate spines into one colour column. The gap is inside it too, so the
@@ -69,7 +73,7 @@ struct TaskRowView: View {
             StepSpine(colorToken: row.stepColor, state: spineState, isSeen: !isUnread)
                 .padding(.vertical, Theme.Spine.gap)
         }
-
+        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
     }
