@@ -19,6 +19,10 @@ cd "$(dirname "$0")/.."
 
 OUT="${OUT:-artifacts/visual-check}"
 
+# The simctl content sizes, longest first so that a hyphenated size is never matched by
+# a shorter one that is its prefix.
+CONTENT_SIZES="accessibility-extra-extra-extra-large accessibility-extra-extra-large accessibility-extra-large accessibility-large accessibility-medium extra-extra-extra-large extra-extra-large extra-large extra-small large medium small"
+
 # Capture first, with the harness that already knows how to drive the app. Its failures
 # are reported at the end rather than stopping the run: a server that is down is worth
 # knowing about, and so is whatever the reading finds in what was captured anyway.
@@ -39,11 +43,25 @@ for file in "$OUT"/*.png; do
     screen="${name%%-*}"
     rest="${name#*-}"
     appearance="${rest%%-*}"
-    size="${rest#*-}"
+    remainder="${rest#*-}"
+    # The size is one of simctl's content sizes, and several of them contain hyphens, so
+    # it is matched against the known list, longest first, rather than split at the first
+    # hyphen. Whatever follows it is the anchor.
+    size=""
     anchor=""
-    case "$size" in
-        *-*) anchor="${size#*-}"; size="${size%%-*}" ;;
-    esac
+    for candidate in $CONTENT_SIZES; do
+        if [ "$remainder" = "$candidate" ] || [ "${remainder#"$candidate"-}" != "$remainder" ]; then
+            size="$candidate"
+            anchor="${remainder#"$candidate"}"
+            anchor="${anchor#-}"
+            break
+        fi
+    done
+    if [ -z "$size" ]; then
+        echo "visual-check: $name: no known content size in the name, skipping" >&2
+        failures=$((failures + 1))
+        continue
+    fi
     key="$screen"
     [ "$size" = "large" ] || key="$screen@$size"
     # An anchored capture shows a region rather than a screen, so it has no entry and

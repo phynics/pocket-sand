@@ -84,6 +84,15 @@ screen with data, which keeps it off CI until fixtures exist — the same altern
 deferred above, now with a concrete reason to build it. And it is a set of heuristics:
 "a line ending in a hyphen" is a good proxy for a broken word, not a proof of one.
 
+**2026-10-09: the two line rules are relaxed inside a content band.** The transcript on
+`detail` is the agent's own words, and a folded command or a hyphenated word there is
+what the agent wrote, not a layout fault, so the ellipsis and hyphen rules were failing
+on text the screen was never going to fix. Each capture may now declare the band its
+transcript occupies in `_contentBand`, and inside it those two findings are reported as
+notes. Outside the band they still fail, so the header and the composer keep the strict
+rules, and the expectations are checked everywhere. A band is a measurement of one
+layout, so it is re-measured when that layout changes.
+
 ## Consequences
 
 - Debug-only code lives in the app: a screen override, and a readiness call in each

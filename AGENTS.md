@@ -208,17 +208,23 @@ real defects — including one at the *default* text size that nobody had notice
 
 Expectations live in `scripts/visual-expectations.json`, keyed by capture:
 `newtask`, or `newtask@accessibility-extra-extra-large` for a size where less is on
-screen. An anchored capture deliberately has no entry, so a region gets the whole-screen
-rules only. Deliberate ellipses are listed under `_expectedTruncation`; the connect
-screen's `kandev_pat_…` placeholder is the reason that list exists.
+screen. The size in a file name is matched against the known simctl content sizes, so a
+hyphenated size is not mistaken for an anchor. An anchored capture deliberately has no
+entry, so a region gets the whole-screen rules only. Deliberate ellipses are listed under
+`_expectedTruncation`; the connect screen's `kandev_pat_…` placeholder is the reason that
+list exists.
 
 It is not pixel diffing, and the reason is in ADR-0004: a font update moving every pixel
 is not a regression, and an ellipsis that was not there yesterday is.
 
-The `detail` capture is noisy by nature, because it photographs a live agent's words:
-a folded command *is* its first line and an ellipsis, and an agent's hyphenated
-`best-practice` wraps at the hyphen. Read its failures rather than counting them; the
-expectations file only asserts what the screen itself draws.
+The `detail` capture photographs a live agent's words, so the two line rules are relaxed
+inside a **content band**: `_contentBand` in `scripts/visual-expectations.json` gives, per
+capture, the `[top, bottom]` of the transcript as fractions of the image height from the
+top. A folded command's ellipsis or an agent's `best-practice` wrapping at the hyphen
+inside the band is reported as a `note`; the same finding outside it (the header, the
+composer) still fails. Expectations are checked everywhere, band or not. The numbers were
+measured from the header's hairline rule and the composer's top edge, with a margin, so
+re-measure them whenever the detail header or composer changes height.
 
 What it reaches: appearance (`simctl ui appearance`), text size (`content_size`,
 including the accessibility sizes), and every screen the tour knows by name. What it

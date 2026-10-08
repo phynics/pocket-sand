@@ -64,11 +64,38 @@ let readFlattened = readAll
     .replacingOccurrences(of: "\n", with: " ")
     .replacingOccurrences(of: "  ", with: " ")
 
+// The expectations file is a map of string lists, plus one reserved entry: `_contentBand`,
+// a map from capture key to `[top, bottom]` in fractions of the image height from the top.
+// Decoded by hand because the two shapes differ.
 guard let data = try? Data(contentsOf: expectationsURL),
-      let expectations = try? JSONDecoder().decode([String: [String]].self, from: data)
+      let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
 else { fail("cannot read \(expectationsURL.path)") }
 
+var expectations: [String: [String]] = [:]
+var contentBands: [String: [Double]] = [:]
+for (name, value) in raw {
+    if name == "_contentBand" {
+        guard let table = value as? [String: [Double]] else {
+            fail("_contentBand must map a capture key to [top, bottom]")
+        }
+        contentBands = table
+    } else {
+        guard let list = value as? [String] else { fail("\(name) must be a list of strings") }
+        expectations[name] = list
+    }
+}
+
+/// Whether a line sits inside this capture's transcript band. Vision reports boxes with
+/// the origin at the bottom-left, so the position from the top is `1 - midY`. The band
+/// is the only place the two whole-screen line rules are relaxed; expectations are not.
+func isInContentBand(_ line: Line) -> Bool {
+    guard let band = contentBands[key], band.count == 2 else { return false }
+    let fromTop = 1 - Double(line.box.midY)
+    return fromTop >= band[0] && fromTop <= band[1]
+}
+
 var failures: [String] = []
+var notes: [String] = []
 
 // 1. Everything this screen is supposed to say, said in full. A substring and not an
 //    equality: the scanner may group a label and its answer onto one line, and that is
@@ -93,14 +120,27 @@ for line in lines where line.text.hasSuffix("…") || line.text.range(of: #"\.\.
         line.text.hasPrefix(allowed.replacingOccurrences(of: "…", with: ""))
     }
     if !isExpected {
-        failures.append("truncated text: “\(line.text)”")
+        if isInContentBand(line) {
+            notes.append("transcript text folded or cut: “\(line.text)”")
+        } else {
+            failures.append("truncated text: “\(line.text)”")
+        }
     }
 }
 
 // 3. No word was broken in half. A hyphen at the end of a line is the layout admitting
-//    it had nowhere to put the word — "Set-" above "up".
+//    it had nowhere to put the word — "Set-" above "up". Inside a transcript band it is
+//    the agent's own prose wrapping at a hyphen, which is not a layout fault.
 for line in lines where line.text.hasSuffix("-") {
-    failures.append("word broken across lines: “\(line.text)”")
+    if isInContentBand(line) {
+        notes.append("transcript word wraps at a hyphen: “\(line.text)”")
+    } else {
+        failures.append("word broken across lines: “\(line.text)”")
+    }
+}
+
+for note in notes {
+    print("note  \(key): \(note)")
 }
 
 if failures.isEmpty {

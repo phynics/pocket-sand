@@ -8,5 +8,10 @@
   "detail@accessibility-extra-extra-large": ["Message"],
   "list": [],
 
-  "_expectedTruncation": ["kandev_pat_…"]
+  "_expectedTruncation": ["kandev_pat_…"],
+
+  "_contentBand": {
+    "detail": [0.20, 0.87],
+    "detail@accessibility-extra-extra-large": [0.39, 0.83]
+  }
 }
