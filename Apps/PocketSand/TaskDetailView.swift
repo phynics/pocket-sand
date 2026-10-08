@@ -421,9 +421,13 @@ struct TaskDetailView: View {
                 FailureNote(message: failure)
             }
         }
-        .padding(Theme.Space.base)
+        // Set off by rules, the way the header sets off the transcript. A filled panel here
+        // would be a card, and the field well is the only fill this screen uses. Only vertical
+        // padding: the header already gives the left edge, so the words stay on it.
+        .padding(.vertical, Theme.Space.base)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface)
+        .overlay(alignment: .top) { Rule() }
+        .overlay(alignment: .bottom) { Rule() }
     }
 
     private var sessionSwitcher: some View {
