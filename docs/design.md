@@ -288,6 +288,10 @@ resolves to a grey panel, a slab of light in an interface whose dark identity is
 absence of one. Each appearance therefore tints towards itself — paper in light,
 black in dark — and what is left of the material is the blur and the edge.
 
+The material runs to the bottom edge of the screen, under the home indicator, and the
+layout gives that room back so the field and button stay where they were. A bar that
+stopped at the safe area left a strip the transcript scrolled through.
+
 **This was removed once and put back, and the reason it came back is worth keeping.**
 The composer was rebuilt as a plain field on paper with a rule above it, on the
 argument that a material there was a surface inside a surface. That argument is not
@@ -497,11 +501,6 @@ thing that is in the way**.
 
 ## Known gaps
 
-- **The composer's glass stops above the home indicator.** The bar is a
-  `safeAreaInset`, so its material ends at the safe area and a strip of paper — black
-  in the dark — sits under it, which the transcript scrolls through. Seen in a still;
-  the fix (letting the material run to the screen's edge while the field stays above
-  the indicator) needs a scroll to verify, and nothing here can drive one.
 - Deep-linking straight into a task before the task list has read its workflows
   leaves the step menu with nothing to offer, so it is hidden. The header then
   shows the agent and no step. Fixing it means the detail screen loading its own

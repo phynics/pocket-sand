@@ -35,6 +35,8 @@ struct TaskDetailView: View {
     @State private var isAtNewest = true
     /// The content's last-measured height, so a change in it is read as growth.
     @State private var contentHeight: CGFloat = 0
+    /// The screen's bottom safe area, which the composer's glass runs down through.
+    @State private var homeIndicatorInset: CGFloat = 0
 
     /// The scroll's aiming point: a view at the true foot of the conversation.
     private static let bottomMarkerID = "conversation-bottom"
@@ -167,6 +169,12 @@ struct TaskDetailView: View {
             // having something to refract.
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 composerBar(conversation.composer)
+            }
+            // Measured here, after the inset, so it is the screen's own bottom inset and not one
+            // the bar adds. With the keyboard up it includes the keyboard; the glass that extends
+            // behind it is out of sight, so that is harmless.
+            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: {
+                homeIndicatorInset = $0
             }
             // The sheet decides its own detents, because a set of them has no order
             // and the one it opens at has to be said out loud.
@@ -686,8 +694,13 @@ struct TaskDetailView: View {
             }
             .padding(.horizontal, Theme.Space.loose)
             .padding(.vertical, Theme.Space.base)
+            // The glass runs on under the home indicator, and the layout gives that room back, so
+            // the field and button stay where they were. A bar that stops at the safe area leaves
+            // a strip the conversation shows through, which is what this closes.
+            .padding(.bottom, homeIndicatorInset)
             .frame(maxWidth: .infinity)
             .controlGlass()
+            .padding(.bottom, -homeIndicatorInset)
         }
     }
 
