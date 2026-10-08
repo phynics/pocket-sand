@@ -56,6 +56,13 @@ final class StubConversationStream: KandevLiveConversations, @unchecked Sendable
         unsubscribeCount += 1
     }
 
+    /// Says the socket came back, the way the transport does after a drop.
+    func pushReconnect() {
+        continuation.yield(
+            KandevEnvelope(type: .notification, action: KandevClientNotice.reconnected, payload: .null)
+        )
+    }
+
     /// Delivers a change the way the server does: as a notification frame.
     ///
     /// The frame is built from primitives rather than by encoding a
@@ -343,6 +350,25 @@ struct TaskConversationFollowingTests {
         #expect(refetched)
         let resubscribed = await waitUntil { stream.subscribeCount == 2 }
         #expect(resubscribed, "a gap should re-establish the subscription, not just refetch")
+    }
+
+    /// A subscription belongs to the socket that made it. After a reconnect the server sends this
+    /// screen nothing, so a screen that does not subscribe again looks live and is not.
+    @Test("a reconnect refetches the conversation and resubscribes")
+    func reconnectRefetchesAndResubscribes() async {
+        let (store, transcriptSource, _, stream) = await loaded()
+        let readsBefore = await transcriptSource.requestedSessions.count
+
+        stream.pushReconnect()
+
+        let refetched = await waitUntil {
+            await transcriptSource.requestedSessions.count > readsBefore
+        }
+        #expect(refetched)
+        let resubscribed = await waitUntil { stream.subscribeCount == 2 }
+        #expect(resubscribed, "a reconnect should re-establish the subscription")
+        let following = await waitUntil { store.isFollowing }
+        #expect(following)
     }
 
     @Test("an unknown operation refetches rather than guessing")

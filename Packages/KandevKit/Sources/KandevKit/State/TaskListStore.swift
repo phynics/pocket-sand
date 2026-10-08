@@ -234,6 +234,16 @@ public final class TaskListStore {
                 await self?.refreshIfDue()
             }
         }
+
+        // A third, because a row's spine is the primary session's condition and that arrives
+        // as `session.state_changed`, not as a task change. Without it a row went on saying
+        // "working" after the agent stopped until something else happened to refresh it.
+        let sessionStates = await hub.sessionStateChanges()
+        sessionWatchTask = Task { [weak self] in
+            for await change in sessionStates {
+                self?.apply(change)
+            }
+        }
     }
 
     /// Merges a session's state into the row it belongs to.
@@ -254,9 +264,16 @@ public final class TaskListStore {
         rebuildRows()
     }
 
+    /// Ends every subscription `startWatching` began.
+    ///
+    /// All of them: the list stops watching each time a task is pushed over it and starts
+    /// again when it comes back, so a subscription left running here is one more each visit —
+    /// and each one refreshed the list on every reconnect.
     public func stopWatching() {
         watchTask?.cancel()
         watchTask = nil
+        reconnectTask?.cancel()
+        reconnectTask = nil
         sessionWatchTask?.cancel()
         sessionWatchTask = nil
         catchUpTask?.cancel()

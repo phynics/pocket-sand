@@ -45,6 +45,8 @@ public final class TaskConversationStore {
     private var stateWatchTask: Task<Void, Never>?
     /// The task subscription, which is how a rename reaches the title.
     private var taskWatchTask: Task<Void, Never>?
+    /// The socket coming back, which is when the conversation subscription has to be made again.
+    private var reconnectWatchTask: Task<Void, Never>?
     /// The revision of the conversation log this screen has applied.
     ///
     /// Observable on purpose: it is where the live stream has got to, and a screen
@@ -162,6 +164,7 @@ public final class TaskConversationStore {
         await stopFollowing()
         watchSessionState(server: server)
         watchTask(server: server)
+        watchReconnects(server: server)
         let follower = ConversationFollower(
             client: server,
             hub: server.hub,
@@ -190,6 +193,8 @@ public final class TaskConversationStore {
         stateWatchTask = nil
         taskWatchTask?.cancel()
         taskWatchTask = nil
+        reconnectWatchTask?.cancel()
+        reconnectWatchTask = nil
         isFollowing = false
         appliedEpoch = nil
         appliedRevision = nil
@@ -236,6 +241,34 @@ public final class TaskConversationStore {
         }
     }
 
+    /// Follows the socket coming back after a drop.
+    ///
+    /// A subscription belongs to the connection that made it, so after a reconnect the server is
+    /// sending this screen nothing, and the frames sent while the socket was down are gone. The
+    /// screen went on looking live and was not: a phone that locked mid-turn came back to a
+    /// transcript that never moved again. The answer is the one a gap gets — read, then subscribe.
+    private func watchReconnects(server: any KandevLiveConversations) {
+        let hub = server.hub
+        reconnectWatchTask = Task { [weak self] in
+            for await _ in await hub.reconnects() {
+                guard let self else { return }
+                // Unstructured, because resubscribing stops this subscription — and the task it
+                // runs in — before it reads anything.
+                Task { await self.resubscribe() }
+            }
+        }
+    }
+
+    /// Reads the conversation again and makes a fresh subscription, for when the one held cannot
+    /// be trusted: a gap in the revisions, or a socket that dropped.
+    private func resubscribe() async {
+        // Resubscribe as well as refetch: after a gap, the revision the stream is on is
+        // unknown, and only a fresh handshake can say.
+        await stopFollowing()
+        await reloadTranscript()
+        await startFollowing()
+    }
+
     /// Applies a change to the task this screen is about, and ignores every other.
     func applyTaskSignal(_ signal: KandevTaskSignal) {
         guard signal.update.taskID == taskID else { return }
@@ -263,11 +296,7 @@ public final class TaskConversationStore {
             appliedRevision = revision
 
         case .refetch:
-            // Resubscribe as well as refetch: after a gap, the revision the
-            // stream is on is unknown, and only a fresh handshake can say.
-            await stopFollowing()
-            await reloadTranscript()
-            await startFollowing()
+            await resubscribe()
         }
     }
 

@@ -249,7 +249,8 @@ public actor KandevNotificationHub {
         taskSubscribers.removeAll()
         for continuation in sessionStateSubscribers.values { continuation.finish() }
         sessionStateSubscribers.removeAll()
+        for continuation in reconnectSubscribers.values { continuation.finish() }
+        reconnectSubscribers.removeAll()
     }
 }
 
-extension KandevClient: KandevNotificationHub.Source {}

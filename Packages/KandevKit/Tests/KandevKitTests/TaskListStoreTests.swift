@@ -342,7 +342,7 @@ struct TaskListStepNameTests {
 @MainActor
 @Suite("TaskListStore live updates")
 struct TaskListLiveUpdateTests {
-    private func loaded() async -> (TaskListStore, FakeTaskSource) {
+    private func loaded(hub: KandevNotificationHub? = nil) async -> (TaskListStore, FakeTaskSource) {
         let source = FakeTaskSource()
         await source.setWorkspaces([workspace])
         await source.setWorkflows([KandevWorkflow(id: "wf1", name: "Development")])
@@ -356,9 +356,27 @@ struct TaskListLiveUpdateTests {
             makeTask(id: "t2", title: "Zenoh device driver", stepID: "step-work",
                      sessionState: "WAITING_FOR_INPUT"),
         ])
-        let store = TaskListStore(source: source, catchUpDelay: .milliseconds(20))
+        let store = TaskListStore(source: source, hub: hub, catchUpDelay: .milliseconds(20))
         await store.refresh()
         return (store, source)
+    }
+
+    /// The spine is the primary session's condition, and that arrives as `session.state_changed`
+    /// rather than as a task change — so the list has to be listening for it, not merely able to
+    /// apply it.
+    @Test("watching follows a session's state from the hub")
+    func watchingFollowsSessionState() async {
+        let stream = StubConversationStream()
+        await stream.hub.start()
+        let (store, _) = await loaded(hub: stream.hub)
+        await store.startWatching()
+        #expect(store.rows.first { $0.id == "t1" }?.isWorking == false)
+
+        stream.pushSessionState(task: "t1", state: "RUNNING")
+
+        let working = await waitUntil { store.rows.first { $0.id == "t1" }?.isWorking == true }
+        #expect(working, "a session that started should move the row's spine")
+        store.stopWatching()
     }
 
     /// The frame that arrives most often carries only a status summary. It must
