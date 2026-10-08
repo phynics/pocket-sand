@@ -107,6 +107,11 @@ struct TaskDetailView: View {
                 } else {
                     ScreenshotTour.ready(.loaded)
                 }
+            } else if !conversation.isFollowing {
+                // Coming back to a loaded screen: `.onDisappear` stopped the follower, and
+                // the load above only runs when the transcript is idle, so nothing would
+                // restart it and the screen would go stale without saying so.
+                await conversation.startFollowing()
             }
             markSeen()
         }
