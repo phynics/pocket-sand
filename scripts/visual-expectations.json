@@ -6,7 +6,7 @@
   "setup": ["What should change?", "Agent"],
   "detail": ["Message the agent"],
   "detail@accessibility-extra-extra-large": ["Message"],
-  "list": [],
+  "list": ["Search tasks"],
 
   "_expectedTruncation": ["kandev_pat_…"],
 

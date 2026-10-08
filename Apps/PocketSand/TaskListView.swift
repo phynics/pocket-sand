@@ -385,9 +385,22 @@ struct TaskListView: View {
                 )
                 .padding(.horizontal, Theme.Space.loose)
                 .frame(maxWidth: Theme.measure, alignment: .leading)
+            } else if store.searchMatchesNothing {
+                EmptyNote(
+                    title: "No tasks match “\(store.searchQuery)”",
+                    detail: store.showingArchived
+                        ? "Nothing archived has that in its title."
+                        : "Nothing on the board has that in its title."
+                )
+                .padding(.horizontal, Theme.Space.loose)
+                .frame(maxWidth: Theme.measure, alignment: .leading)
             }
         }
         .animation(.default, value: store.rows)
+        // The system's search field, which is the platform's own control and so takes no
+        // treatment from the design. Bound through `Bindable` because the store is observed,
+        // not owned, by this view.
+        .searchable(text: Bindable(store).searchText, prompt: "Search tasks")
     }
 
     /// The chats shelf: a heading that opens and closes them, and the chats themselves.

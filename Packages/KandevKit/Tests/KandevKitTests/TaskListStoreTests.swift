@@ -89,9 +89,11 @@ func makeTask(
     sessionState: String? = "WAITING_FOR_INPUT",
     activity: String? = "2026-10-04T18:07:04.074817797Z",
     archived: Bool = false,
-    ephemeral: Bool = false
+    ephemeral: Bool = false,
+    parentID: String? = nil,
+    repositoryID: String? = nil
 ) -> KandevTask {
-    KandevTask(
+    var task = KandevTask(
         id: id,
         title: title,
         state: state,
@@ -103,6 +105,9 @@ func makeTask(
         archivedAt: archived ? KandevTimestamp(raw: "2026-10-05T00:00:00Z") : nil,
         primarySessionState: sessionState
     )
+    task.parentID = parentID
+    task.repositories = repositoryID.map { [KandevTaskRepository(id: "\(id)-repo", repositoryID: $0)] }
+    return task
 }
 
 let workspace = KandevWorkspace(id: "w1", name: "Default Workspace", scopes: [])
@@ -857,5 +862,196 @@ struct TaskListGroupingTests {
         await store.refresh()
 
         #expect(store.sections(.byRepository).first?.title == "/dev/x")
+    }
+}
+
+@MainActor
+@Suite("TaskListStore search")
+struct TaskListSearchTests {
+    /// Titles, parents, projects and chats are the whole of what a search can see, so each
+    /// test states the ones it depends on.
+    private func loaded(
+        tasks: [KandevTask],
+        total: Int? = nil,
+        pageSize: Int = 50
+    ) async -> (TaskListStore, FakeTaskSource) {
+        let source = FakeTaskSource()
+        await source.setWorkspaces([workspace])
+        await source.setWorkflows([KandevWorkflow(id: "wf1", name: "Development")])
+        await source.setSteps(
+            [KandevWorkflowStep(id: "step-work", name: "In Progress", position: 1)],
+            forWorkflow: "wf1"
+        )
+        await source.setRepositories([
+            KandevRepository(id: "r1", name: "pocket-sand", sourceType: "local"),
+            KandevRepository(id: "r2", name: "kandev", sourceType: "github"),
+        ])
+        await source.setTasks(tasks, total: total)
+        let store = TaskListStore(source: source, pageSize: pageSize)
+        await store.refresh()
+        return (store, source)
+    }
+
+    private func ids(_ store: TaskListStore, _ listing: TaskListStore.Listing = .flat) -> [String] {
+        store.sections(listing).flatMap(\.rows).map(\.id)
+    }
+
+    @Test("matches the title case- and diacritic-insensitively")
+    func matchesTitles() async {
+        let (store, _) = await loaded(tasks: [
+            makeTask(id: "t1", title: "Fix the Café login", stepID: "step-work"),
+            makeTask(id: "t2", title: "Rename the parser", stepID: "step-work"),
+        ])
+
+        store.searchText = "cafe"
+        #expect(ids(store) == ["t1"])
+
+        store.searchText = "CAFÉ"
+        #expect(ids(store) == ["t1"])
+
+        store.searchText = "  parse  "
+        #expect(ids(store) == ["t2"], "surrounding spaces are not part of the search")
+    }
+
+    /// An empty search is the list as it was before search existed, and so is one that is only
+    /// spaces, which is what a cleared field can leave behind.
+    @Test("an empty search returns exactly what it did before")
+    func emptySearchChangesNothing() async {
+        let (store, _) = await loaded(tasks: [
+            makeTask(id: "t1", title: "One", stepID: "step-work", ephemeral: true),
+            makeTask(id: "t2", title: "Two", stepID: "step-work", repositoryID: "r1"),
+            makeTask(id: "t3", title: "Three", stepID: "step-work", repositoryID: "r2"),
+        ])
+        let before = store.sections(.byRepository)
+
+        store.searchText = "   "
+        #expect(store.sections(.byRepository) == before)
+        #expect(store.searchMatchesNothing == false)
+
+        store.searchText = ""
+        #expect(store.sections(.byRepository) == before)
+    }
+
+    @Test("a search that matches nothing says so, and an empty workspace is not that")
+    func reportsNoMatch() async {
+        let (store, _) = await loaded(tasks: [makeTask(id: "t1", title: "One", stepID: "step-work")])
+
+        store.searchText = "zzz"
+        #expect(store.searchMatchesNothing)
+        #expect(store.sections(.flat).isEmpty)
+
+        let (empty, _) = await loaded(tasks: [])
+        empty.searchText = "zzz"
+        #expect(empty.searchMatchesNothing == false, "no tasks at all is the empty list, not a search")
+    }
+
+    @Test("drops a project's section when the search leaves it empty")
+    func dropsEmptySections() async {
+        let (store, _) = await loaded(tasks: [
+            makeTask(id: "t1", title: "Fix the login", stepID: "step-work", repositoryID: "r1"),
+            makeTask(id: "t2", title: "Parser cleanup", stepID: "step-work", repositoryID: "r2"),
+        ])
+        #expect(store.sections(.byRepository).map(\.title) == ["pocket-sand", "kandev"])
+
+        store.searchText = "login"
+
+        #expect(store.sections(.byRepository).map(\.title) == ["pocket-sand"])
+        #expect(store.sections(.byRepository).flatMap(\.rows).map(\.id) == ["t1"])
+    }
+
+    /// A subtask is a row like any other, so a match on it shows. Its parent is not drawn
+    /// above it, so it is drawn as a task rather than indented under nothing.
+    @Test("a matching subtask shows without its parent, drawn as a task")
+    func subtaskWithoutParent() async {
+        let (store, _) = await loaded(tasks: [
+            makeTask(id: "p1", title: "Refactor the store", stepID: "step-work"),
+            makeTask(id: "c1", title: "Retry the upload", stepID: "step-work", parentID: "p1"),
+        ])
+        #expect(store.rows.first { $0.id == "c1" }?.depth == 1)
+
+        store.searchText = "retry"
+
+        let rows = store.sections(.flat).flatMap(\.rows)
+        #expect(rows.map(\.id) == ["c1"])
+        #expect(rows.first?.depth == 0)
+    }
+
+    @Test("a matching parent keeps its matching subtask indented under it")
+    func matchingParentKeepsChildren() async {
+        let (store, _) = await loaded(tasks: [
+            makeTask(id: "p1", title: "Upload the photos", stepID: "step-work"),
+            makeTask(id: "c1", title: "Retry the upload", stepID: "step-work", parentID: "p1"),
+            makeTask(id: "c2", title: "Name the album", stepID: "step-work", parentID: "p1"),
+        ])
+
+        store.searchText = "upload"
+
+        let rows = store.sections(.flat).flatMap(\.rows)
+        #expect(rows.map(\.id) == ["p1", "c1"], "a subtask that does not match is not shown")
+        #expect(rows.last?.depth == 1, "a subtask whose parent matches stays under it")
+    }
+
+    /// Chats are tasks too, so they are searched like the work — and a search with no chats in
+    /// it does not leave an empty shelf.
+    @Test("chats are searched like the work")
+    func chatsAreFiltered() async {
+        let (store, _) = await loaded(tasks: [
+            makeTask(id: "chat", title: "Quick question about login", stepID: nil, ephemeral: true),
+            makeTask(id: "t1", title: "Login page", stepID: "step-work"),
+        ])
+
+        store.searchText = "login"
+        #expect(store.sections(.flat).map(\.id) == ["chats", "all"])
+
+        store.searchText = "page"
+        #expect(store.sections(.flat).map(\.id) == ["all"])
+        #expect(ids(store) == ["t1"])
+    }
+
+    /// A filter over the pages already held would miss a match on a page nobody has loaded.
+    /// Searching reads the rest of the workspace instead.
+    @Test("a search reads the older pages until it has them all")
+    func searchReadsOlderPages() async {
+        let (store, source) = await loaded(
+            tasks: [makeTask(id: "t1", title: "One", stepID: "step-work")],
+            total: 3,
+            pageSize: 1
+        )
+        await source.setTasks([makeTask(id: "t2", title: "Two", stepID: "step-work")], total: 3, page: 2)
+        await source.setTasks([makeTask(id: "t3", title: "Target on the last page", stepID: "step-work")], total: 3, page: 3)
+        #expect(store.hasMore)
+
+        store.searchText = "target"
+
+        let read = await waitUntil { store.hasMore == false }
+        #expect(read, "every page should have been read")
+        #expect(ids(store) == ["t3"])
+        let pages = await source.requestedPages
+        #expect(pages == [1, 2, 3])
+    }
+
+    /// A failed page ends the search and keeps what is held. Without the stop, the loop would
+    /// retry the same page for as long as the search was typed.
+    @Test("a failed page stops the search and keeps the rows on screen")
+    func failureStopsSearch() async {
+        let (store, source) = await loaded(
+            tasks: [makeTask(id: "t1", title: "One", stepID: "step-work")],
+            total: 3,
+            pageSize: 1
+        )
+        await source.setTasks([makeTask(id: "t2", title: "Two", stepID: "step-work")], total: 3, page: 2)
+        await source.failNextTasksCall()
+
+        store.searchText = "two"
+
+        let failed = await waitUntil {
+            if case .failed = store.phase { return true }
+            return false
+        }
+        #expect(failed)
+        #expect(store.rows.map(\.id) == ["t1"])
+        #expect(store.hasMore)
+        let pages = await source.requestedPages
+        #expect(pages == [1, 2], "the failed page is not asked for again by the search")
     }
 }

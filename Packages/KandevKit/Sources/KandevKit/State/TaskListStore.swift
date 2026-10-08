@@ -75,6 +75,31 @@ public final class TaskListStore {
     /// Whether the list is showing work taken off the board rather than on it.
     public private(set) var showingArchived = false
 
+    /// What the list is searched for, as typed.
+    ///
+    /// A search narrows what `sections(_:)` returns and nothing else: the rows are still the
+    /// workspace's work, so the archive toggle, paging and live updates behave the same under it.
+    /// Setting it also reads the rest of the workspace, because a filter over the pages already
+    /// held would say "no match" about tasks nobody has loaded yet.
+    public var searchText = "" {
+        didSet {
+            guard isSearching else { return }
+            Task { await loadMore() }
+        }
+    }
+
+    /// The search with its surrounding spaces removed, which is what it matches on.
+    public var searchQuery: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSearching: Bool { !searchQuery.isEmpty }
+
+    /// Whether a search is in effect and none of the rows on the list match it.
+    public var searchMatchesNothing: Bool {
+        isSearching && !rows.isEmpty && listedRows.isEmpty
+    }
+
     /// How the work rows are arranged.
     public enum Listing: String, Sendable, CaseIterable, Identifiable {
         /// A section per repository, which is how a workspace's work is usually shaped.
@@ -161,6 +186,8 @@ public final class TaskListStore {
             hasMore = tasks.count < totalOnServer
             hasUnseenTasks = false
             phase = .loaded
+            // A search reads the workspace again from page one, so it reads the rest again too.
+            if isSearching { Task { await loadMore() } }
             // Recorded for reads the person asked for as well as the automatic ones:
             // a pull to refresh is a read, and a scene change a second later should
             // not repeat it.
@@ -188,26 +215,36 @@ public final class TaskListStore {
     public var stepNames: [String: String] { catalogue.stepNames }
 
     /// Appends the next page, if the server reported one.
+    ///
+    /// While a search is in effect it keeps going, page after page, until the workspace is
+    /// read. The search is a filter over what is held, so a match on the ninth page would be
+    /// invisible to a list that stopped at the first. It stops at the server's last page, and
+    /// at the first failure, which keeps what is held and retries from the same page.
     public func loadMore() async {
         guard hasMore, !isLoadingMore, let workspaceID else { return }
         isLoadingMore = true
         defer { isLoadingMore = false }
 
-        do {
-            let page = try await source.tasks(
-                workspaceID: workspaceID,
-                query: listQuery(page: nextPage)
-            )
-            tasks.append(contentsOf: page.tasks)
-            totalOnServer = page.total
-            nextPage += 1
-            rebuildRows()
-            hasMore = tasks.count < totalOnServer
-        } catch {
-            // A failed page is not a failed list: keep what is on screen and let
-            // the next attempt retry from the same page number.
-            phase = .failed(KandevError.readableMessage(for: error))
-        }
+        repeat {
+            do {
+                let page = try await source.tasks(
+                    workspaceID: workspaceID,
+                    query: listQuery(page: nextPage)
+                )
+                tasks.append(contentsOf: page.tasks)
+                totalOnServer = page.total
+                nextPage += 1
+                rebuildRows()
+                // An empty page is the end, whatever the total says. Without this a server that
+                // reports more than it returns would have a search asking for pages forever.
+                hasMore = tasks.count < totalOnServer && !page.tasks.isEmpty
+            } catch {
+                // A failed page is not a failed list: keep what is on screen and let
+                // the next attempt retry from the same page number.
+                phase = .failed(KandevError.readableMessage(for: error))
+                return
+            }
+        } while isSearching && hasMore
     }
 
     // MARK: - Watching
@@ -365,7 +402,7 @@ public final class TaskListStore {
         var chats: [TaskRow] = []
         var work: [TaskRow] = []
 
-        for row in rows {
+        for row in listedRows {
             if row.isEphemeral {
                 chats.append(row)
             } else {
@@ -426,6 +463,26 @@ public final class TaskListStore {
     /// Repository id to name, read with the tasks so a heading can say which project
     /// a section is.
     public private(set) var repositoryNames: [String: String] = [:]
+
+    /// The rows the list draws: all of them, or, while a search is in effect, the ones whose
+    /// title matches it.
+    ///
+    /// Matching is on the title, case- and diacritic-insensitively. A matching subtask whose
+    /// parent does not match is drawn as a task: its indent means "under the row above", and
+    /// that row is not on the list. Its parent is not looked up, so a parent that is missing
+    /// from the loaded rows cannot make the child disappear.
+    private var listedRows: [TaskRow] {
+        guard isSearching else { return rows }
+        let matching = Set(rows.filter { $0.title.localizedStandardContains(searchQuery) }.map(\.id))
+        return rows.filter { matching.contains($0.id) }.map { row in
+            guard let parentID = row.parentID, matching.contains(parentID) else {
+                var top = row
+                top.depth = 0
+                return top
+            }
+            return row
+        }
+    }
 
     private func rebuildRows() {
         let visible = tasks.filter(matchesTheToggle(_:))
