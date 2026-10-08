@@ -16,7 +16,7 @@ what the agent did.**
 
 ### 1. The app has no colour of its own
 
-Five achromatic values, and every hue on screen comes from the workflow step
+Six achromatic values, and every hue on screen comes from the workflow step
 colours the server already sends, plus the system's destructive red.
 
 | Token | Light | Dark |
@@ -69,11 +69,14 @@ pixels:
 This is not restraint for its own sake. It settles a real argument: the server
 colours process position, so any accent this app introduced would compete with the
 one signal on screen that carries meaning. **Attention is therefore ink, not a
-hue** — a small solid square, used at seven points, and nothing else in the
-interface is filled.
+hue**: an unread row is set in ink and a read one in muted grey, a task that is
+asking something has a spine that breathes twice as fast as one that is working,
+and a failed one borrows the system's red. (A small solid square in the row's
+corner did this job first; it read as a stray artefact, and it is gone.)
 
-Dark mode is soft grey, not black. The near-black-and-acid-accent look is a
-default rather than a decision, and it is not this app's.
+The rule reaches the platform's own controls too. `AccentColor` is ink, so a
+toolbar button or a menu is not quietly blue, and a swipe action that is not
+destructive is the platform's neutral grey.
 
 ### 2. Three voices, three faces
 
@@ -242,10 +245,15 @@ screenshot flow in one paragraph: the app is used at sizes the developer is not 
 
 ## Motion
 
-One animation in the app: a working row's spine dims and brightens. It answers the
-question the user is actually asking. It is off under Reduce Motion, and that is
-not a loss — the spine stays solid and still means "working". A floor of 0.55, not
-0.3: a three-point spine at 30% reads as a missing row.
+One thing moves without being touched: a row's spine, which dims and brightens while
+an agent works — slowly — and twice as fast while it is waiting on an answer. It
+answers the question the user is actually asking. It is off under Reduce Motion,
+and that is not a loss — the spine stays solid and still says the same thing. A
+floor of 0.55, not 0.3: a three-point spine at 30% reads as a missing row.
+
+Everything else that moves was asked for: a fold opening (`Motion.fold`, off under
+Reduce Motion), and the transcript's live line, whose rows slide out and numbers
+roll as the turn the reader is watching progresses (see "The line under the work").
 
 ## What looking at it changed
 
@@ -489,6 +497,11 @@ thing that is in the way**.
 
 ## Known gaps
 
+- **The composer's glass stops above the home indicator.** The bar is a
+  `safeAreaInset`, so its material ends at the safe area and a strip of paper — black
+  in the dark — sits under it, which the transcript scrolls through. Seen in a still;
+  the fix (letting the material run to the screen's edge while the field stays above
+  the indicator) needs a scroll to verify, and nothing here can drive one.
 - Deep-linking straight into a task before the task list has read its workflows
   leaves the step menu with nothing to offer, so it is hidden. The header then
   shows the agent and no step. Fixing it means the detail screen loading its own

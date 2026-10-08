@@ -18,7 +18,8 @@ asks the store, and the store asks the client.
 
 ## The protocol is pinned, not tracked
 
-`KandevProtocol` targets one Kandev release line (`KandevWireVersion.releaseLine`).
+The wire types in `Packages/KandevKit/Sources/KandevKit/Wire` target one Kandev
+release line (`KandevWireVersion.releaseLine`).
 Kandev calls `/ws` an internal protocol that can change without notice, so:
 
 - Every wire type and action carries a doc comment naming the server version and
@@ -90,11 +91,14 @@ Launch that session first with `session.launch`; a prompt cannot be addressed
 without the session's incarnation id. Delete the task afterwards. Never point it
 at a task someone is using.
 
-Two things learnt the hard way about these suites:
+Three things learnt the hard way about these suites:
 
 - The environment must be set on **each** command in the recipe. On one line it
   reaches only the first, and the second suite is skipped while reporting no
   failures. As a target-level export it reached neither, and the suite crashed.
+- `test-live` *fails*, rather than skips, against a server whose first workspace has
+  no tasks or no sessions. A red read-only run on a fresh server is a data state,
+  not a regression; check what the workspace holds before chasing it.
 - They are `.serialized`, and a live "nothing should change for N seconds" test
   cannot be written at all: another suite's turn completion lands inside the
   window. Assert that against a captured frame instead.
@@ -118,8 +122,13 @@ an ordered operation log, not a message-per-frame feed:
 There is exactly **one** consumer of the transport's notification stream, because
 an `AsyncStream` gives each value to one reader. That consumer is
 `KandevNotificationHub`, one per client, which decodes each frame once and fans it
-out. Screens subscribe to the hub; **nothing else may read `client.notifications`**,
-because a second reader silently takes half the frames.
+out. Screens subscribe to the hub, and `KandevClient` deliberately has no public
+`notifications`: a second reader silently takes half the frames, so the rule is the
+API rather than a comment. Only the probe, which owns its own transport, reads raw.
+
+A subscription belongs to the socket that made it. After a reconnect the server is
+sending the old scope nothing, so the conversation store treats `hub.reconnects()`
+the way it treats a revision gap: refetch, then resubscribe.
 
 The hub tags each task change with what kind it was, and that tag is load-bearing.
 A deletion carries the *whole task*, so a list that only looks at the payload
@@ -135,8 +144,6 @@ for any change to this path:
 | `created` | marks itself behind and catches up, coalescing bursts |
 | `deleted`, `archived` | removes the row immediately |
 
-The conversation frames carry a heartbeat every few seconds (`check: true`, no
-operations). Treating it as a change refetches on a timer.
 
 ## Verifying a screen by hand
 
@@ -207,6 +214,11 @@ screen's `kandev_pat_…` placeholder is the reason that list exists.
 
 It is not pixel diffing, and the reason is in ADR-0004: a font update moving every pixel
 is not a regression, and an ellipsis that was not there yesterday is.
+
+The `detail` capture is noisy by nature, because it photographs a live agent's words:
+a folded command *is* its first line and an ellipsis, and an agent's hyphenated
+`best-practice` wraps at the hyphen. Read its failures rather than counting them; the
+expectations file only asserts what the screen itself draws.
 
 What it reaches: appearance (`simctl ui appearance`), text size (`content_size`,
 including the accessibility sizes), and every screen the tour knows by name. What it

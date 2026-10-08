@@ -31,3 +31,9 @@ REST was dead code.
 The raw protocol also has two different failure shapes, and one of them arrives
 inside a frame that otherwise looks successful. Failure classification lives in
 one place (`KandevFailure`) so no call site can forget to check it.
+
+## Note on names
+
+Written before the code settled. The "`KandevProtocol` module" is the `Wire/`
+directory of the `KandevKit` package, and the "`kandevVersion` constant" is
+`KandevWireVersion.releaseLine`. The decision is unchanged.
