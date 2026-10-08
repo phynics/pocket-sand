@@ -82,7 +82,10 @@ struct TaskListView: View {
                         read: session.read
                     )
                 }
-                .refreshable { await store.refresh() }
+                // Unstructured, and awaited, for the reason the task screen's is: SwiftUI cancels
+                // the task a refresh runs in when the content it refreshes changes, and a refresh
+                // changes it. The await still holds the spinner until the read ends.
+                .refreshable { await Task { await store.refresh() }.value }
                 // Coming back to a screen is the event that matters: the socket may
                 // have been down for hours, and nothing about the rows can be trusted
                 // across that. Debounced inside the store, because this fires after

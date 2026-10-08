@@ -62,8 +62,8 @@ actor FakeTaskSource: KandevTaskSource {
     /// Set to make the next `tasks` call fail, to exercise the store's error path.
     var tasksFailure: (any Error)?
 
-    func failNextTasksCall() {
-        tasksFailure = Failure.tasks
+    func failNextTasksCall(with error: any Error = Failure.tasks) {
+        tasksFailure = error
     }
 
     func tasks(workspaceID: String, query: KandevTaskListQuery) async throws -> KandevTaskList {
@@ -131,6 +131,19 @@ struct TaskListStoreTests {
         let store = TaskListStore(source: source, pageSize: 2)
         await store.refresh()
         return (store, source)
+    }
+
+    @Test("a cancelled refresh keeps the rows and reports nothing")
+    func cancelledRefreshIsNotAFailure() async {
+        let (store, source) = await loadedStore(tasks: [
+            makeTask(id: "t1", title: "One", stepID: "step-review"),
+        ])
+
+        await source.failNextTasksCall(with: URLError(.cancelled))
+        await store.refresh()
+
+        #expect(store.phase == .loaded)
+        #expect(store.rows.map(\.id) == ["t1"])
     }
 
     @Test("resolves every row's step name from the workflow steps")

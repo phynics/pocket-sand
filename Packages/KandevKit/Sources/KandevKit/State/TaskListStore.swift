@@ -155,6 +155,7 @@ public final class TaskListStore {
 
     /// Loads everything the list needs, from scratch.
     public func refresh() async {
+        let before = phase
         phase = .loading
         do {
             let workspace = try await resolveWorkspace()
@@ -192,6 +193,10 @@ public final class TaskListStore {
             // a pull to refresh is a read, and a scene change a second later should
             // not repeat it.
             refreshPolicy.record(at: Date())
+        } catch where KandevError.isCancellation(error) {
+            // Not a failure: the read was called off, usually by SwiftUI ending the pull that
+            // started it. The rows are still what they were, so the list says what it said.
+            phase = before == .loading ? .idle : before
         } catch {
             phase = .failed(KandevError.readableMessage(for: error))
         }
@@ -238,6 +243,9 @@ public final class TaskListStore {
                 // An empty page is the end, whatever the total says. Without this a server that
                 // reports more than it returns would have a search asking for pages forever.
                 hasMore = tasks.count < totalOnServer && !page.tasks.isEmpty
+            } catch where KandevError.isCancellation(error) {
+                // Called off rather than refused: the next attempt reads the same page.
+                return
             } catch {
                 // A failed page is not a failed list: keep what is on screen and let
                 // the next attempt retry from the same page number.
