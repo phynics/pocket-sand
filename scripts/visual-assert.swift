@@ -134,9 +134,20 @@ for line in lines where line.text.hasSuffix("…") || line.text.range(of: #"\.\.
 // 3. No word was broken in half. A hyphen at the end of a line is the layout admitting
 //    it had nowhere to put the word — "Set-" above "up". Inside a transcript band it is
 //    the agent's own prose wrapping at a hyphen, which is not a layout fault.
+//
+//    Nor is an identifier: a model name like `deepseek-v4.1-flash` is longer than a line at
+//    the accessibility sizes, and its own hyphen is the best place it has to break — the
+//    alternative is a break inside "flash". A layout-made hyphen splits a word of letters;
+//    a line with no space and a digit or a slash in it is a machine string, whose hyphen
+//    was already there.
+func isIdentifier(_ text: String) -> Bool {
+    !text.contains(" ") && text.contains(where: { $0.isNumber || $0 == "/" })
+}
 for line in lines where line.text.hasSuffix("-") {
     if isInContentBand(line) {
         notes.append("transcript word wraps at a hyphen: “\(line.text)”")
+    } else if isIdentifier(line.text) {
+        notes.append("identifier wraps at its own hyphen: “\(line.text)”")
     } else {
         failures.append("word broken across lines: “\(line.text)”")
     }
