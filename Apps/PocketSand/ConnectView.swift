@@ -15,6 +15,10 @@ struct ConnectView: View {
     @State private var token = ""
     @State private var isTokenVisible = false
     @ScaledMetric(relativeTo: .callout) private var revealRoom: CGFloat = 28
+    /// The address field's text line, measured rather than guessed. A SecureField lays its
+    /// text out a little shorter than a TextField does, so the token well was about 2pt
+    /// shorter at the default size; it is given this as a minimum height instead.
+    @State private var addressLineHeight: CGFloat = 0
     @State private var problem: String?
 
     init(servers: ServerBookmarkStore, onConnect: @escaping (ServerBookmark) -> Void) {
@@ -87,6 +91,7 @@ struct ConnectView: View {
             .foregroundStyle(Theme.ink)
             .textFieldStyle(.plain)
             .autocorrectionDisabled()
+            .frame(minHeight: addressLineHeight)
             // The room the reveal glyph takes at the trailing edge, so a long token stops short of it.
             .padding(.leading, Theme.Space.base)
             .padding(.vertical, Theme.Space.base)
@@ -137,6 +142,7 @@ struct ConnectView: View {
                 .foregroundStyle(Theme.ink)
                 .textFieldStyle(.plain)
                 .autocorrectionDisabled()
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { addressLineHeight = $0 }
                 // The same well the composer and the brief are, and the same one a question in the
                 // transcript is. A field is the one place this app fills a container, and a text
                 // field is a text field wherever it is: this screen was drawn as a bordered
