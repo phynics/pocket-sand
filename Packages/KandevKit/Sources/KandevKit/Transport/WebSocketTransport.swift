@@ -100,6 +100,14 @@ public actor WebSocketTransport: KandevTransport {
             throw KandevError.transport(error.localizedDescription)
         }
 
+        // The socket can drop while the frame is leaving. The tear-down fails what was parked and
+        // forgets every claimed id, so a caller that parked *after* it would wait on an id nothing
+        // will ever answer — not even the timeout, which only fires for an id still claimed. A
+        // response that already landed is in `unwaiters` and is still good.
+        guard awaitingResponse.contains(id) || unwaiters[id] != nil else {
+            throw KandevError.connectionClosed
+        }
+
         let timeout = configuration.requestTimeout
         let expiry = Task { [weak self] in
             try? await Task.sleep(for: timeout)
@@ -131,6 +139,11 @@ public actor WebSocketTransport: KandevTransport {
             do {
                 frame = try await task.receive()
             } catch {
+                // A socket that was already replaced reports its own end late: a close followed by
+                // a connect — leaving a screen and coming back — cancels the old task, and its
+                // receive throws after the new one is up. Treating that as a drop would tear down
+                // the socket that is working.
+                guard task === socket else { return }
                 connectionDropped()
                 return
             }
@@ -219,8 +232,19 @@ public actor WebSocketTransport: KandevTransport {
         reconnectTask = nil
         guard !isClosed, socket == nil else { return }
 
+        try? await connect()
+        // `connect` only resumes a task; it cannot fail on a server that is down. Without a round
+        // trip, every attempt "succeeded", the backoff reset to its first step on each one, and every
+        // subscriber was told to refetch from a server that was not there — a retry every half second
+        // for as long as the server stayed off.
+        guard let attempt = socket else {
+            scheduleReconnect()
+            return
+        }
         do {
-            try await connect()
+            try await Self.ping(attempt)
+            // The ping suspended, and the socket may have been replaced or closed meanwhile.
+            guard attempt === socket else { return }
             reconnectAttempt = 0
             // Said out loud, because a socket that was down may have missed frames
             // and this client does not replay them: anything holding server state
@@ -233,7 +257,24 @@ public actor WebSocketTransport: KandevTransport {
                 )
             )
         } catch {
-            scheduleReconnect()
+            // Only the socket that was pinged: one that replaced it in the meantime is not this
+            // attempt's to tear down. The receive loop usually notices the same failure and
+            // schedules the retry itself; `scheduleReconnect` keeps it to one either way.
+            guard attempt === socket else { return }
+            connectionDropped()
+        }
+    }
+
+    /// One round trip on a socket, which is the only proof that it reached a server.
+    private static func ping(_ socket: URLSessionWebSocketTask) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+            socket.sendPing { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            }
         }
     }
 
