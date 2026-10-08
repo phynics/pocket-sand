@@ -211,5 +211,15 @@ public final class AppSession {
     public func connect() async throws {
         try await client.connect()
     }
+
+    /// Closes the connection, for a session that is being replaced.
+    ///
+    /// Dropping the session is not enough: the transport's receive loop holds it, so a session
+    /// that was merely let go kept its socket open and went on reconnecting to a server nobody was
+    /// looking at — one more for every switch between servers.
+    public func disconnect() async {
+        taskList.stopWatching()
+        await client.close()
+    }
 }
 

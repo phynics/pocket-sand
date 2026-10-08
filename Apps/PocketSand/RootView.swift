@@ -35,7 +35,7 @@ struct RootView: View {
                 session: session,
                 servers: servers,
                 onSelectServer: activate,
-                onAddServer: { self.session = nil }
+                onAddServer: { replaceSession(with: nil) }
             )
             .id(session.bookmark.id)
         } else {
@@ -45,7 +45,14 @@ struct RootView: View {
 
     private func activate(_ bookmark: ServerBookmark) {
         servers.setActive(bookmark.id)
-        session = AppSession(bookmark: bookmark, token: servers.token(for: bookmark))
+        replaceSession(with: AppSession(bookmark: bookmark, token: servers.token(for: bookmark)))
+    }
+
+    /// Swaps the connected session, closing the one it replaces. See `AppSession.disconnect`.
+    private func replaceSession(with next: AppSession?) {
+        let previous = session
+        session = next
+        if let previous { Task { await previous.disconnect() } }
     }
 }
 
