@@ -494,6 +494,26 @@ private struct ControlGlass: ViewModifier {
     }
 }
 
+/// The small symbol a row leads with, in a column of its own.
+///
+/// Sized with the words beside it rather than in points. At the default size it is the eleven
+/// points the rows always used; at the accessibility sizes a fixed eleven-point glyph beside text
+/// Dynamic Type has tripled reads as a speck, and a fixed fourteen-point column is narrower than
+/// the glyph it holds, which then runs into the words.
+struct LeadingGlyph: View {
+    let systemName: String
+    var tint: Color = Theme.muted
+
+    @ScaledMetric(relativeTo: .caption2) private var column: CGFloat = 14
+
+    var body: some View {
+        Image(systemName: systemName)
+            .font(Theme.Face.chrome(.caption2))
+            .foregroundStyle(tint)
+            .frame(width: column, alignment: .leading)
+    }
+}
+
 /// A hairline. Structure in this app comes from rules rather than from boxes.
 struct Rule: View {
     @Environment(\.displayScale) private var displayScale
@@ -520,10 +540,7 @@ struct FailureNote: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: Theme.Space.snug) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 11))
-                .foregroundStyle(.red)
-                .frame(width: 14, alignment: .leading)
+            LeadingGlyph(systemName: "exclamationmark.triangle.fill", tint: .red)
                 .accessibilityHidden(true)
 
             Text(message)

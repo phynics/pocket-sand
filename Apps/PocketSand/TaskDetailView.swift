@@ -42,6 +42,7 @@ struct TaskDetailView: View {
     /// costs money and runs on someone's machine.
     @State private var selectedProfileID: String?
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     init(
         taskID: String,
@@ -326,10 +327,12 @@ struct TaskDetailView: View {
 
             HStack(spacing: Theme.Space.base) {
                 if let agent = task.primaryAgentName {
+                    // Wraps rather than truncating: at the accessibility sizes one line held
+                    // "umans/Umans Dee…", and the agent is one of the two facts this line is for.
                     Text(agent)
                         .font(Theme.Face.machine(.caption))
                         .foregroundStyle(Theme.muted)
-                        .lineLimit(1)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 if transcript.sessions.count > 1 {
                     sessionSwitcher
@@ -423,7 +426,11 @@ struct TaskDetailView: View {
 
     @ViewBuilder
     private var transcriptBody: some View {
-        if let failure = failureMessage {
+        // A failure takes the screen only when there is nothing to keep. A refetch runs after every
+        // send and every return to the app, and one that failed used to replace the whole
+        // conversation with its error — the same rule as the list: a failed read is not a failed
+        // transcript, so the failure goes above what is already there.
+        if let failure = failureMessage, transcript.turns.isEmpty {
             FailureNote(message: failure)
         } else if transcript.hasNoSession {
             startSession
@@ -433,6 +440,9 @@ struct TaskDetailView: View {
                 detail: "This session has no messages. Ask it something below."
             )
         } else {
+            if let failure = failureMessage {
+                FailureNote(message: failure)
+            }
             ForEach(Array(transcript.turns.enumerated()), id: \.element.id) { index, turn in
                 // Only the turn being written has live work in it. Handing the screen's
                 // working state to every turn gave each of them a timer and a run that
@@ -638,7 +648,11 @@ struct TaskDetailView: View {
     private func composerBar(_ store: ComposerStore) -> some View {
         @Bindable var composer = store
 
-        return VStack(alignment: .leading, spacing: Theme.Space.snug) {
+        // One container around both glass surfaces — the bar and its button — because glass cannot
+        // sample glass: apart, each carries its own backdrop and the two read as unrelated
+        // surfaces. The container used to hold only the button, with the bar's glass outside it.
+        return GlassEffectContainer(spacing: Theme.Space.snug) {
+            VStack(alignment: .leading, spacing: Theme.Space.snug) {
             if let failure = composerFailure(store) {
                 FailureNote(message: failure)
             } else if let notice = composerNotice(store) {
@@ -648,7 +662,14 @@ struct TaskDetailView: View {
             }
 
             HStack(alignment: .bottom, spacing: Theme.Space.base) {
-                TextField("Message the agent", text: $composer.draft, axis: .vertical)
+                // Shorter at the accessibility sizes, for the reason the create screen drops its
+                // example there: a placeholder does not wrap, and "Message th…" is worse than a
+                // word that fits.
+                TextField(
+                    dynamicTypeSize.isAccessibilitySize ? "Message" : "Message the agent",
+                    text: $composer.draft,
+                    axis: .vertical
+                )
                     .font(Theme.Face.prose(.body))
                     .lineLimit(1...8)
                     .textFieldStyle(.plain)
@@ -659,20 +680,15 @@ struct TaskDetailView: View {
 
                 // One glyph, not words: "Stop" and "Send" cost a third of a phone's
                 // width between them and pushed the field into a sliver.
-                //
-                // In a container with the bar because glass cannot sample glass: the
-                // button and the surface it sits on have to share one.
-                GlassEffectContainer(spacing: Theme.Space.snug) {
-                    actionButton(store)
-                }
-                .padding(.bottom, 2)
+                actionButton(store)
+                    .padding(.bottom, 2)
             }
-
+            }
+            .padding(.horizontal, Theme.Space.loose)
+            .padding(.vertical, Theme.Space.base)
+            .frame(maxWidth: .infinity)
+            .controlGlass()
         }
-        .padding(.horizontal, Theme.Space.loose)
-        .padding(.vertical, Theme.Space.base)
-        .frame(maxWidth: .infinity)
-        .controlGlass()
     }
 
     /// A glyph with a name for anyone who cannot see it.

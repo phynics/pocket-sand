@@ -265,12 +265,14 @@ struct TaskListView: View {
                     withAnimation { store.removeRow(taskID: row.id) }
                 }
             }
-            .tint(.indigo)
+            // Grey, not a hue: the app has no colour of its own (docs/design.md), and indigo
+            // here was the only one it had invented. Grey is the platform's own neutral action.
+            .tint(.gray)
         } else {
             Button("Archive", systemImage: "archivebox") {
                 removal.ask(.archive, taskID: row.id, title: row.title)
             }
-            .tint(.indigo)
+            .tint(.gray)
 
             Button("Delete", systemImage: "trash", role: .destructive) {
                 removal.ask(.delete, taskID: row.id, title: row.title)
@@ -396,7 +398,7 @@ struct TaskListView: View {
             } label: {
                 HStack(spacing: Theme.Space.snug) {
                     Image(systemName: chatsExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(Theme.Face.chrome(.caption2, weight: .semibold))
                     Text("Quick Chats")
                     Text("\(section.rows.count)")
                         .monospacedDigit()

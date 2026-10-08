@@ -46,17 +46,14 @@ private struct FoldedRowFrame<Label: View>: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: Theme.Space.snug) {
-            Image(systemName: symbol)
-                .font(.system(size: 11))
-                // Ink when open, muted when closed: some sign that a tap did
-                // something, without a second glyph to do it.
-                .foregroundStyle(isExpanded ? Theme.ink : tint)
-                .frame(width: 14, alignment: .leading)
+            // Ink when open, muted when closed: some sign that a tap did
+            // something, without a second glyph to do it.
+            LeadingGlyph(systemName: symbol, tint: isExpanded ? Theme.ink : tint)
             label()
             Spacer(minLength: Theme.Space.snug)
             if showsDisclosure {
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(Theme.Face.chrome(.caption2, weight: .semibold))
                     .foregroundStyle(Theme.muted)
             }
         }
@@ -332,10 +329,7 @@ struct LiveStepView: View {
         // a short command left its gap below it and shoved the line underneath; here the gap is
         // above the words, which is where a transcript can afford one.
         HStack(alignment: .bottom, spacing: Theme.Space.snug) {
-            Image(systemName: RowGlyph.symbol(for: row.kind))
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.muted)
-                .frame(width: 14, alignment: .leading)
+            LeadingGlyph(systemName: RowGlyph.symbol(for: row.kind))
 
             ZStack(alignment: .bottom) {
                 // The slot itself: three lines of the same face, holding the height whether or not
@@ -846,7 +840,7 @@ private struct AskCard: View {
     @ViewBuilder private var header: some View {
         HStack(spacing: Theme.Space.snug) {
             Image(systemName: "questionmark.bubble")
-                .font(.system(size: 11))
+                .font(Theme.Face.chrome(.caption2))
                 .foregroundStyle(Theme.muted)
             if let context = ask.context, !context.isEmpty {
                 Text(context)
@@ -936,7 +930,7 @@ private struct AskCard: View {
     @ViewBuilder private var settled: some View {
         HStack(spacing: Theme.Space.snug) {
             Image(systemName: settledSymbol)
-                .font(.system(size: 11))
+                .font(Theme.Face.chrome(.caption2))
                 .foregroundStyle(Theme.muted)
             Text(settledLabel)
                 .font(Theme.Face.chrome(.footnote))

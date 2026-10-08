@@ -27,9 +27,7 @@ struct ConnectView: View {
                 masthead
                 address
                 if let problem {
-                    Text(problem)
-                        .font(Theme.Face.chrome(.footnote))
-                        .foregroundStyle(Theme.muted)
+                    FailureNote(message: problem)
                 }
                 connectButton
                 if !servers.bookmarks.isEmpty {

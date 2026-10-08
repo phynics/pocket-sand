@@ -301,8 +301,13 @@ struct NewTaskView: View {
             .listRowBackground(Color.clear)
             .id(ScreenshotTour.Anchor.agent)
 
-            repositoryRow
-                .id(ScreenshotTour.Anchor.repository)
+            // A task only. A chat is started without repositories — the route is sent none, so
+            // the workspace's own are used — and a choice the request never carries is a choice
+            // that is silently thrown away.
+            if mode == .task {
+                repositoryRow
+                    .id(ScreenshotTour.Anchor.repository)
+            }
         } header: {
             Text(mode == .task ? "Where it goes" : "Who takes it")
                 .font(Theme.Face.chrome(.footnote))
@@ -346,7 +351,7 @@ struct NewTaskView: View {
 
     @ViewBuilder private var destinationFooter: some View {
         VStack(alignment: .leading, spacing: Theme.Space.snug) {
-            if store.repositories.isEmpty && !isResolving {
+            if mode == .task && store.repositories.isEmpty && !isResolving {
                 Text("No repositories in this workspace yet. **Setup** can add one — a GitHub repository, or a path on the machine running Kandev.")
                     .font(Theme.Face.chrome(.footnote))
                     .foregroundStyle(Theme.muted)
@@ -428,7 +433,7 @@ struct NewTaskView: View {
     @ViewBuilder private func glyph(isPickable: Bool) -> some View {
         if isPickable {
             Image(systemName: "chevron.up.chevron.down")
-                .font(.system(size: 13, weight: .medium))
+                .font(Theme.Face.chrome(.footnote, weight: .medium))
                 .foregroundStyle(Theme.ink)
         }
     }
