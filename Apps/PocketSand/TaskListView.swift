@@ -126,8 +126,11 @@ struct TaskListView: View {
                 ) {
                     if let pending = removal.pending {
                         Button(confirmLabel(for: pending.action), role: .destructive) {
+                            // Taken here, before anything is scheduled: the dialog's dismissal clears
+                            // `pending` before the Task runs. See `TaskRemovalStore.confirm(_:)`.
+                            let decision = pending
                             Task {
-                                if let removed = await removal.confirm() {
+                                if let removed = await removal.confirm(decision) {
                                     withAnimation { store.removeRow(taskID: removed) }
                                 }
                             }
@@ -500,9 +503,17 @@ struct TaskListView: View {
         }
     }
 
+    /// The explanation under the question. When a confirmation was refused and the question is
+    /// asked again, the refusal comes first, so the re-asked question says why it is back.
     private var removalMessage: String {
         guard let pending = removal.pending else { return "" }
-        switch pending.action {
+        let explanation = removalExplanation(for: pending.action)
+        guard let failure = removal.failureMessage else { return explanation }
+        return "\(failure)\n\n\(explanation)"
+    }
+
+    private func removalExplanation(for action: TaskRemovalStore.Action) -> String {
+        switch action {
         case .archive:
             return "It leaves the board. Nothing is deleted, and it can be unarchived."
         case .delete:

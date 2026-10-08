@@ -128,24 +128,23 @@ struct TaskRemovalStoreTests {
         return (TaskRemovalStore(remover: remover), remover)
     }
 
-    /// Nothing is removed without a decision: there is no path from a tap
-    /// straight to a deletion.
-    @Test("does nothing until something is confirmed")
+    /// Nothing is removed without a decision: `confirm` takes one, and only `ask`
+    /// makes one, so there is no path from a tap straight to a deletion.
+    @Test("does nothing until something is asked")
     func nothingHappensUnprompted() async {
         let (store, remover) = store()
 
         #expect(store.pending == nil)
-        #expect(await store.confirm() == nil)
         let calls = await remover.calls
         #expect(calls.isEmpty)
     }
 
     @Test("archives what it was asked about, subtasks included by default")
-    func archives() async {
+    func archives() async throws {
         let (store, remover) = store()
         store.ask(.archive, taskID: "t1", title: "A task")
 
-        let removed = await store.confirm()
+        let removed = await store.confirm(try #require(store.pending))
 
         #expect(removed == "t1")
         #expect(store.pending == nil)
@@ -154,23 +153,23 @@ struct TaskRemovalStoreTests {
     }
 
     @Test("archives without subtasks when that is turned off")
-    func archiveWithoutSubTasks() async {
+    func archiveWithoutSubTasks() async throws {
         let (store, remover) = store()
         store.includesSubTasks = false
         store.ask(.archive, taskID: "t1", title: "A task")
 
-        _ = await store.confirm()
+        _ = await store.confirm(try #require(store.pending))
 
         let calls = await remover.calls
         #expect(calls.first?.cascade == false)
     }
 
     @Test("deletes without discarding anything, first time")
-    func deletesWithoutDiscarding() async {
+    func deletesWithoutDiscarding() async throws {
         let (store, remover) = store()
         store.ask(.delete, taskID: "t1", title: "A task")
 
-        _ = await store.confirm()
+        _ = await store.confirm(try #require(store.pending))
 
         // The preflight first, and the delete carrying the ticket it answered with — the route
         // refuses a delete without one.
@@ -186,12 +185,12 @@ struct TaskRemovalStoreTests {
     /// error would be wrong, and silently retrying with the work discarded would
     /// be worse.
     @Test("a dirty worktree turns a deletion into a heavier question")
-    func dirtyWorktreeAsksAgain() async {
+    func dirtyWorktreeAsksAgain() async throws {
         let (store, remover) = store()
         await remover.setPreflight(requiresDiscardConsent: true)
         store.ask(.delete, taskID: "t1", title: "A task")
 
-        let removed = await store.confirm()
+        let removed = await store.confirm(try #require(store.pending))
 
         #expect(removed == nil, "nothing was removed yet")
         #expect(store.pending?.action == .discardAndDelete)
@@ -203,13 +202,13 @@ struct TaskRemovalStoreTests {
     }
 
     @Test("answering the heavier question discards and deletes")
-    func discardingDeletes() async {
+    func discardingDeletes() async throws {
         let (store, remover) = store()
         await remover.setPreflight(requiresDiscardConsent: true)
         store.ask(.delete, taskID: "t1", title: "A task")
-        _ = await store.confirm()
+        _ = await store.confirm(try #require(store.pending))
 
-        let removed = await store.confirm()
+        let removed = await store.confirm(try #require(store.pending))
 
         #expect(removed == "t1")
         let calls = await remover.calls
@@ -221,12 +220,12 @@ struct TaskRemovalStoreTests {
     /// Without a ticket there is nothing to delete with, so a preflight that fails must stop there
     /// rather than send a delete the route will refuse.
     @Test("a refused preflight is reported and nothing is deleted")
-    func refusedPreflightIsReported() async {
+    func refusedPreflightIsReported() async throws {
         let (store, remover) = store()
         await remover.failPreflight(with: KandevError.connectionClosed)
         store.ask(.delete, taskID: "t1", title: "A task")
 
-        let removed = await store.confirm()
+        let removed = await store.confirm(try #require(store.pending))
 
         #expect(removed == nil)
         #expect(store.failure != nil)
@@ -237,14 +236,14 @@ struct TaskRemovalStoreTests {
     /// A delete refused for some other reason is a failure, and must not be
     /// mistaken for the dirty-worktree question.
     @Test("a refusal for another reason is reported as a failure")
-    func otherRefusalsAreFailures() async {
+    func otherRefusalsAreFailures() async throws {
         let (store, remover) = store()
         await remover.failDelete(
             with: KandevError.http(status: 500, body: #"{"code":"internal_error"}"#)
         )
         store.ask(.delete, taskID: "t1", title: "A task")
 
-        let removed = await store.confirm()
+        let removed = await store.confirm(try #require(store.pending))
 
         #expect(removed == nil)
         #expect(store.pending?.action == .delete, "still the decision that was asked for")
@@ -252,24 +251,77 @@ struct TaskRemovalStoreTests {
     }
 
     @Test("a failed archive is reported and leaves the question standing")
-    func failedArchiveIsReported() async {
+    func failedArchiveIsReported() async throws {
         let (store, remover) = store()
         await remover.failArchive(with: KandevError.connectionClosed)
         store.ask(.archive, taskID: "t1", title: "A task")
 
-        let removed = await store.confirm()
+        let removed = await store.confirm(try #require(store.pending))
 
         #expect(removed == nil)
         #expect(store.failure != nil)
         #expect(store.pending?.action == .archive, "so it can be tried again")
     }
 
+    /// The dialog's destructive button is tapped, the dialog dismisses, and dismissing it
+    /// calls `cancel()` — all before the confirmation runs. The confirmation must still go
+    /// through on the decision it was handed. Before this was pinned, every confirmed
+    /// archive and delete did nothing.
+    @Test("a confirmation survives the dialog's own dismissal")
+    func archiveSurvivesDismissal() async throws {
+        let (store, remover) = store()
+        store.ask(.archive, taskID: "t1", title: "A task")
+        let decision = try #require(store.pending)
+        store.cancel()
+
+        let removed = await store.confirm(decision)
+
+        #expect(removed == "t1")
+        #expect(store.pending == nil)
+        let calls = await remover.calls
+        #expect(calls == [.init(kind: "archive", id: "t1", cascade: true, discard: false)])
+    }
+
+    @Test("a delete survives the dialog's own dismissal")
+    func deleteSurvivesDismissal() async throws {
+        let (store, remover) = store()
+        store.ask(.delete, taskID: "t1", title: "A task")
+        let decision = try #require(store.pending)
+        store.cancel()
+
+        let removed = await store.confirm(decision)
+
+        #expect(removed == "t1")
+        #expect(store.pending == nil)
+        let calls = await remover.calls
+        #expect(calls == [
+            .init(kind: "preflight", id: "t1", cascade: true, discard: false),
+            .init(kind: "delete", id: "t1", cascade: true, discard: false, confirmation: "ticket-1"),
+        ])
+    }
+
+    @Test("a dirty worktree found after the dialog's dismissal still asks the heavier question")
+    func dirtyWorktreeSurvivesDismissal() async throws {
+        let (store, remover) = store()
+        await remover.setPreflight(requiresDiscardConsent: true)
+        store.ask(.delete, taskID: "t1", title: "A task")
+        let decision = try #require(store.pending)
+        store.cancel()
+
+        let removed = await store.confirm(decision)
+
+        #expect(removed == nil)
+        #expect(store.pending?.action == .discardAndDelete)
+        #expect(store.pending?.taskID == "t1")
+        #expect(store.failure == nil)
+    }
+
     @Test("cancelling drops the question and any failure with it")
-    func cancelClears() async {
+    func cancelClears() async throws {
         let (store, remover) = store()
         await remover.failArchive(with: KandevError.connectionClosed)
         store.ask(.archive, taskID: "t1", title: "A task")
-        _ = await store.confirm()
+        _ = await store.confirm(try #require(store.pending))
         #expect(store.failure != nil)
 
         store.cancel()
@@ -279,11 +331,11 @@ struct TaskRemovalStoreTests {
     }
 
     @Test("asking about something new clears the previous failure")
-    func askingAgainClearsFailure() async {
+    func askingAgainClearsFailure() async throws {
         let (store, remover) = store()
         await remover.failArchive(with: KandevError.connectionClosed)
         store.ask(.archive, taskID: "t1", title: "A task")
-        _ = await store.confirm()
+        _ = await store.confirm(try #require(store.pending))
 
         store.ask(.delete, taskID: "t2", title: "Another")
 
