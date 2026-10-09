@@ -216,7 +216,7 @@ struct TaskDetailView: View {
             // it was tapped. Rebuilding it from the transcript keeps the sheet the
             // exchange it claims to be. Row ids are the server's message ids, so nothing
             // already on screen moves when it is rebuilt.
-            .onChange(of: transcript.turns) { _, _ in
+            .onChange(of: transcript.revision) { _, _ in
                 // Reading the conversation while it grows keeps it read.
                 markSeen()
                 // A page of history has landed above the reader. Content arriving above a scroll

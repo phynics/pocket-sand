@@ -383,9 +383,10 @@ struct TranscriptCondensingTests {
 
         let running = (0..<6).map { timestamped("r\($0)", start.addingTimeInterval(Double($0) * 5)) }
         let live = TranscriptTurn(id: "t1", rows: running)
-            .items(condensing: false, generating: true, now: start.addingTimeInterval(215))
+            .items(condensing: false, generating: true)
             .first { $0.isStepsSummary }
-        #expect(live?.stepsSummaryDuration == 215)
+        #expect(live?.stepsSummaryDuration == nil, "a run being written is counted by the view, not fixed here")
+        #expect(live?.stepsSummaryStart == start, "and the view counts from the run's first message")
     }
 
     private func timestamped(_ id: String, _ at: Date) -> TranscriptRow {

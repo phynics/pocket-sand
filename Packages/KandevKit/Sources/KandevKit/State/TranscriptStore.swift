@@ -15,7 +15,14 @@ public final class TranscriptStore {
     public private(set) var phase: Phase = .idle
     public private(set) var task: KandevTask?
     public private(set) var sessions: [KandevSession] = []
-    public private(set) var turns: [TranscriptTurn] = []
+    public private(set) var turns: [TranscriptTurn] = [] {
+        // Counted on every change, including an edit to one row in place. A view that watches
+        // this number is told a turn changed without comparing every row of the transcript.
+        didSet { revision &+= 1 }
+    }
+    /// Advances each time `turns` changes. Watch this, not `turns`, to react to a change: the
+    /// comparison of the whole transcript is what a live message would otherwise pay per token.
+    public private(set) var revision = 0
     public private(set) var stepName: String?
     /// Set when the task exists but has no session yet. Opening a task must never
     /// start an agent, so this is a real state and not an error.

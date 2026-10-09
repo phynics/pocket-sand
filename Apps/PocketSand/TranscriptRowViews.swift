@@ -114,11 +114,11 @@ struct TranscriptTurnView: View, Equatable {
     var body: some View {
         // No clock here. A running turn's elapsed times tick in the two labels that show them
         // (`LiveElapsed`), so the turn's rows are not rebuilt once a second.
-        content(now: Date())
+        content
     }
 
-    @ViewBuilder private func content(now: Date) -> some View {
-        let items = turn.items(condensing: isCondensed, generating: isWorking, expanded: expandedRows, now: now)
+    @ViewBuilder private var content: some View {
+        let items = turn.items(condensing: isCondensed, generating: isWorking, expanded: expandedRows)
 
         VStack(alignment: .leading, spacing: Theme.Space.base) {
             ForEach(itemGroups(items)) { group in

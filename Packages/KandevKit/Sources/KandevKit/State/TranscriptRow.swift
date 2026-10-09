@@ -263,8 +263,7 @@ public struct TranscriptTurn: Sendable, Identifiable, Equatable {
         condensing: Bool,
         recentLimit: Int = TranscriptTurn.recentMachineRowLimit,
         generating: Bool = false,
-        expanded: Set<String> = [],
-        now: Date = Date()
+        expanded: Set<String> = []
     ) -> [TranscriptItem] {
         let live = generating && !condensing && rows.last?.isMachineOutput == true
         let segments = workSegments()
@@ -287,7 +286,7 @@ public struct TranscriptTurn: Sendable, Identifiable, Equatable {
                     if isOpen || run.count > recentLimit {
                         let shown = isOpen ? run : Array(run.suffix(recentLimit + 1))
                         items.append(contentsOf: shown.collapsedRepeats())
-                        items.append(summary(for: run, live: true, now: now))
+                        items.append(summary(for: run, live: true))
                     } else {
                         items.append(contentsOf: run.collapsedRepeats())
                     }
@@ -297,7 +296,7 @@ public struct TranscriptTurn: Sendable, Identifiable, Equatable {
                     if isOpen {
                         items.append(contentsOf: run.collapsedRepeats())
                     }
-                    items.append(summary(for: run, live: false, now: now))
+                    items.append(summary(for: run, live: false))
                 }            }
         }
         return live ? items.markingLiveStep() : items
@@ -308,11 +307,14 @@ public struct TranscriptTurn: Sendable, Identifiable, Equatable {
     /// Underneath, because it is a conclusion about steps that have happened rather than
     /// a claim about ones that have not, and its id is the run's first row so the line
     /// stands still while its numbers roll.
-    private func summary(for run: [TranscriptRow], live: Bool, now: Date) -> TranscriptItem {
+    ///
+    /// A run being written carries no duration. Its length is still growing, and a value fixed
+    /// here would be stale by the next frame; the view counts from `stepsSummaryStart` instead.
+    private func summary(for run: [TranscriptRow], live: Bool) -> TranscriptItem {
         .stepsSummary(
             id: "steps:\(run[0].id)",
             rows: run,
-            duration: runDuration(run, live: live, now: now)
+            duration: live ? nil : runDuration(run)
         )
     }
 
@@ -347,15 +349,13 @@ public struct TranscriptTurn: Sendable, Identifiable, Equatable {
         }
     }
 
-    /// How long a run took, or has been going.
+    /// How long a finished run took.
     ///
     /// From the run's own messages: the span between its first and its last includes the
     /// time the tools it called spent working, which is the part of a long task nobody
-    /// can see. A run being written is timed to now, because the server has not dated an
-    /// end that has not come.
-    private func runDuration(_ run: [TranscriptRow], live: Bool, now: Date) -> TimeInterval? {
+    /// can see.
+    private func runDuration(_ run: [TranscriptRow]) -> TimeInterval? {
         guard let start = run.first?.at else { return nil }
-        if live { return max(0, now.timeIntervalSince(start)) }
         guard let end = run.last?.at, end > start else { return nil }
         return end.timeIntervalSince(start)
     }

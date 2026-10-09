@@ -627,3 +627,24 @@ struct TranscriptRefetchTests {
         #expect(store.hasOlder == false)
     }
 }
+
+@MainActor
+@Suite("TranscriptStore revision")
+struct TranscriptRevisionTests {
+    @Test("moves when a message is revised in place, so a view need not compare the transcript")
+    func revisionMovesOnInPlaceEdit() async {
+        let source = StubTranscriptSource(
+            task: .success(task),
+            sessions: .success([session("s1", primary: true)]),
+            messages: ["s1": [message("m1", author: "agent", text: "draft", turn: "t")]]
+        )
+        let store = TranscriptStore(source: source)
+        await store.load(taskID: "t1")
+        let before = store.revision
+
+        store.upsert(KandevMessage(id: "m1", authorType: "agent", content: "draft, grown", turnID: "t"))
+
+        #expect(store.turns.first?.rows.first?.text == "draft, grown")
+        #expect(store.revision != before)
+    }
+}
