@@ -70,7 +70,7 @@ private struct FoldedRowFrame<Label: View>: View {
 ///
 /// Turns are separated by a rule rather than a label. The rule is a real boundary,
 /// and a heading saying "Turn 4" would be a typographic device doing a rule's job.
-struct TranscriptTurnView: View {
+struct TranscriptTurnView: View, Equatable {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let turn: TranscriptTurn
@@ -96,17 +96,25 @@ struct TranscriptTurnView: View {
     var onAnswer: ((KandevClarification, KandevClarificationAnswer) -> Void)?
     var onReject: ((String) -> Void)?
 
+    /// Equal when the turn would draw the same thing.
+    ///
+    /// The actions are not compared. Closures never compare equal, and every one of them is the
+    /// screen's own — a store that lives as long as the screen, or a binding to its state — so a
+    /// turn with the same data draws the same whichever closures it was handed. The expanded rows
+    /// are compared by value: opening a step must still redraw its turn.
+    static func == (lhs: TranscriptTurnView, rhs: TranscriptTurnView) -> Bool {
+        lhs.turn == rhs.turn
+            && lhs.isCondensed == rhs.isCondensed
+            && lhs.isWorking == rhs.isWorking
+            && lhs.isStreaming == rhs.isStreaming
+            && lhs.previousReply == rhs.previousReply
+            && lhs.expandedRows == rhs.expandedRows
+    }
+
     var body: some View {
-        // A running turn is timed as it goes, so its clock has to tick. Only a working
-        // turn gets a timer: a finished one has nothing left to count, and one timer per
-        // turn would be one per row of the transcript.
-        if isWorking {
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                content(now: context.date)
-            }
-        } else {
-            content(now: Date())
-        }
+        // No clock here. A running turn's elapsed times tick in the two labels that show them
+        // (`LiveElapsed`), so the turn's rows are not rebuilt once a second.
+        content(now: Date())
     }
 
     @ViewBuilder private func content(now: Date) -> some View {
@@ -131,15 +139,8 @@ struct TranscriptTurnView: View {
             // The turn's own length, on its boundary — but only when no run carries one.
             // A summary already says how long its run took, and a second number under it
             // was two clocks for one task: "running for 26 minutes" over "3m 26s".
-            if !items.contains(where: \.isStepsSummary), let duration = turnLength(now: now) {
-                HStack(spacing: Theme.Space.snug) {
-                    Rule()
-                    Text(CompactDuration.label(seconds: duration))
-                        .font(Theme.Face.machine(.caption2))
-                        .foregroundStyle(Theme.muted)
-                        .monospacedDigit()
-                }
-                .padding(.top, Theme.Space.hair)
+            if !items.contains(where: \.isStepsSummary) {
+                turnLengthLine
             }
         }
         // A step finishing pushes the tail up and lands in the summary line below it.
@@ -280,11 +281,23 @@ struct TranscriptTurnView: View {
     ///
     /// To now while it is being written, because the server has not dated an end that has
     /// not come; the server's own count once it has finished.
-    private func turnLength(now: Date) -> TimeInterval? {
+    @ViewBuilder private var turnLengthLine: some View {
         if isWorking, let startedAt = turn.startedAt {
-            return max(0, now.timeIntervalSince(startedAt))
+            LiveElapsed(since: startedAt) { lengthLine($0) }
+        } else if let duration = turn.duration {
+            lengthLine(duration)
         }
-        return turn.duration
+    }
+
+    private func lengthLine(_ duration: TimeInterval) -> some View {
+        HStack(spacing: Theme.Space.snug) {
+            Rule()
+            Text(CompactDuration.label(seconds: duration))
+                .font(Theme.Face.machine(.caption2))
+                .foregroundStyle(Theme.muted)
+                .monospacedDigit()
+        }
+        .padding(.top, Theme.Space.hair)
     }
 
     /// One exchange, as the sheet wants it: what was said before, what was asked, the
@@ -392,6 +405,21 @@ struct LiveStepView: View {
 /// A run can be eighty steps; expanding it where it stands turns one screen into a
 /// scroll through somebody's search history, and the transcript is meant to stay the
 /// length of the conversation.
+/// A duration that counts up from a start, redrawn once a second while it is shown.
+///
+/// The one place a clock runs. A running summary and a running turn's length each wrap their own
+/// line in this, so the clock reaches the text that shows it and nothing else on the screen.
+private struct LiveElapsed<Content: View>: View {
+    let since: Date
+    @ViewBuilder let content: (TimeInterval) -> Content
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            content(max(0, context.date.timeIntervalSince(since)))
+        }
+    }
+}
+
 struct StepsSummaryView: View {
     let item: TranscriptItem
     /// Whether the turn is still running, which decides the tense: a line that says
@@ -405,6 +433,15 @@ struct StepsSummaryView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        if isRunning, let start = item.stepsSummaryStart {
+            // Only this line counts. The turn above it is not rebuilt for the clock.
+            LiveElapsed(since: start) { row(duration: $0) }
+        } else {
+            row(duration: item.stepsSummaryDuration)
+        }
+    }
+
+    private func row(duration: TimeInterval?) -> some View {
         Button(action: open) {
             FoldedRowFrame(
                 symbol: RowGlyph.steps,
@@ -412,11 +449,11 @@ struct StepsSummaryView: View {
                 isExpanded: isExpanded,
                 showsDisclosure: true
             ) {
-                label
+                label(duration: duration)
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(spokenLabel)
+        .accessibilityLabel(spokenLabel(duration: duration))
         .accessibilityHint("Opens the full conversation around this work")
     }
 
@@ -429,8 +466,9 @@ struct StepsSummaryView: View {
     /// One string with two runs rather than two labels, so a long summary wraps to a
     /// second line instead of being cut off mid-phrase. "Read 9 files and ran 49…" reads
     /// as a bug; the same words on their own line read as a sentence.
-    private var label: some View {
-        Text(attributedLabel)
+    private func label(duration: TimeInterval?) -> some View {
+        let text = attributedLabel(duration: duration)
+        return Text(text)
             .font(Theme.Face.chrome(.footnote))
             .lineLimit(2)
             .multilineTextAlignment(.leading)
@@ -438,13 +476,13 @@ struct StepsSummaryView: View {
             // that changes without anyone touching it, and a counter that ticks is how
             // a line says "still working" without a spinner.
             .contentTransition(.numericText())
-            .animation(Motion.fold(reduceMotion: reduceMotion), value: attributedLabel)
+            .animation(Motion.fold(reduceMotion: reduceMotion), value: text)
     }
 
-    private var attributedLabel: AttributedString {
+    private func attributedLabel(duration: TimeInterval?) -> AttributedString {
         var label = AttributedString()
 
-        if let duration = item.stepsSummaryDuration {
+        if let duration {
             var time = AttributedString("\(timeLead(in: duration)) \(CompactDuration.spoken(seconds: duration))")
             time.font = Theme.Face.chrome(.footnote, weight: .medium)
             // Graphite, not ink. This is the loudest line in a working transcript — it changes on
@@ -456,7 +494,7 @@ struct StepsSummaryView: View {
         }
 
         if let summary = item.stepsSummaryLabel {
-            var words = AttributedString(item.stepsSummaryDuration == nil ? summary : "; \(summary)")
+            var words = AttributedString(duration == nil ? summary : "; \(summary)")
             words.foregroundColor = Theme.muted
             label += words
         }
@@ -468,9 +506,9 @@ struct StepsSummaryView: View {
         isRunning ? "Running for" : "Ran for"
     }
 
-    private var spokenLabel: String {
+    private func spokenLabel(duration: TimeInterval?) -> String {
         var parts: [String] = []
-        if let duration = item.stepsSummaryDuration {
+        if let duration {
             parts.append("\(timeLead(in: duration)) \(CompactDuration.spoken(seconds: duration))")
         }
         if let summary = item.stepsSummaryLabel { parts.append(summary) }

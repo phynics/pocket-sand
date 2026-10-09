@@ -150,13 +150,16 @@ struct TaskDetailView: View {
                 // glyph, a hairline and sometimes glass. Eager, every one of them
                 // is built and laid out on every change to the transcript — and the
                 // transcript changes on every message the agent emits.
+                // The column constraints go on the stack, not on its children: a modifier on a
+                // child would wrap it in a single view, and the stack would then see one child
+                // where it should see every turn.
                 LazyVStack(alignment: .leading, spacing: Theme.Space.section) {
                     content
-                        .padding(.horizontal, Theme.Space.loose)
-                        .padding(.top, Theme.Space.base)
-                        .frame(maxWidth: Theme.measure, alignment: .leading)
-                        .frame(maxWidth: .infinity, alignment: .center)
                 }
+                .padding(.horizontal, Theme.Space.loose)
+                .padding(.top, Theme.Space.base)
+                .frame(maxWidth: Theme.measure, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .center)
                 // Growth is the conversation moving: a new row, the step being written,
                 // the summary taking a second line, the queue arriving. Measured here,
                 // where it is the content's own height, rather than on the scroll view,
@@ -292,22 +295,22 @@ struct TaskDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// The children are the stack's own: a `LazyVStack` builds a turn only when it is near the
+    /// screen, and wrapping them in a `VStack` here would hand it one child and build them all.
     @ViewBuilder
     private var content: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.section) {
-            earlierMessages
-            transcriptBody
-            queuedPrompts
-            // The scroll's aiming point: the true foot of the conversation, under the
-            // queue, so "follow the newest" does not stop at the last turn while prompts
-            // wait below it. It is also what says whether the reader is at the foot — a
-            // view that is on screen or is not, rather than arithmetic against a composer
-            // whose height changes with the draft.
-            Color.clear
-                .frame(height: 2)
-                .id(Self.bottomMarkerID)
-                .onScrollVisibilityChange { visible in isAtNewest = visible }
-        }
+        earlierMessages
+        transcriptBody
+        queuedPrompts
+        // The scroll's aiming point: the true foot of the conversation, under the
+        // queue, so "follow the newest" does not stop at the last turn while prompts
+        // wait below it. It is also what says whether the reader is at the foot — a
+        // view that is on screen or is not, rather than arithmetic against a composer
+        // whose height changes with the draft.
+        Color.clear
+            .frame(height: 2)
+            .id(Self.bottomMarkerID)
+            .onScrollVisibilityChange { visible in isAtNewest = visible }
     }
 
     // MARK: - Header
@@ -476,6 +479,7 @@ struct TaskDetailView: View {
             if let failure = failureMessage {
                 FailureNote(message: failure)
             }
+            let replies = transcript.turns.previousReplies()
             ForEach(Array(transcript.turns.enumerated()), id: \.element.id) { index, turn in
                 // Only the turn being written has live work in it. Handing the screen's
                 // working state to every turn gave each of them a timer and a run that
@@ -485,13 +489,17 @@ struct TaskDetailView: View {
                     turn: turn,
                     isCondensed: transcript.isCondensedByDefault(turnID: turn.id, working: isWorking),
                     isWorking: isLiveTurn,
-                    previousReply: transcript.turns.reply(preceding: index),
+                    previousReply: replies[index],
                     expandedRows: $expandedRows,
                     onShowSteps: { stepsContent = $0 },
                     loadOutput: loadShellOutput,
                     onAnswer: answer,
                     onReject: skip
                 )
+                // A finished turn is skipped while the reader types or the agent writes the
+                // next one: its inputs are equal, so its body is not run again. See
+                // `TranscriptTurnView` for why the actions are left out of that comparison.
+                .equatable()
             }
         }
     }
@@ -665,7 +673,7 @@ struct TaskDetailView: View {
         guard let index = turnIndex(forSheetID: current.id) else { return nil }
         return TurnSheetContent(
             id: current.id,
-            previousReply: transcript.turns.reply(preceding: index),
+            previousReply: transcript.turns.previousReplies()[index],
             rows: transcript.turns[index].rows,
             focus: current.focus
         )

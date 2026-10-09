@@ -15,39 +15,49 @@ struct MarkdownText: View {
 
     /// Whether this text is still being written.
     ///
-    /// The renderer parses the whole of it on every body evaluation, and a streaming reply is
-    /// re-evaluated on every token — so the cost of a reply grows with its length times the number
-    /// of tokens it took to write, which is quadratic, and it is visible. While this is true the
-    /// text is snapshotted at most every `coalesce`; the moment it stops, the exact text is
-    /// rendered, so a finished answer is not a different page from the one that was streaming.
-    var isStreaming = false
+    /// Parsing is the expensive part, and a streaming reply changes on every token. While this is
+    /// true the text is parsed at most every `coalesce`; the moment it stops, the exact text is
+    /// parsed, so a finished answer is not a different page from the one that was streaming.
+    let isStreaming: Bool
 
-    @State private var snapshot = ""
-    @State private var snapshotAt = Date.distantPast
+    /// The parsed document, not the string it came from. `Markdown` parses its source when it is
+    /// created, so handing it the string on every body evaluation parsed the whole reply once per
+    /// token. Parsing happens here, only when the text it shows changes.
+    @State private var parsed: MarkdownContent
+    @State private var parsedAt = Date.distantPast
 
     /// Long enough that the parse happens a handful of times a second at worst, short enough that
     /// a paragraph looks written rather than delivered in chunks.
     private static let coalesce: TimeInterval = 0.2
 
+    init(text: String, isStreaming: Bool = false) {
+        self.text = text
+        self.isStreaming = isStreaming
+        _parsed = State(initialValue: MarkdownContent(text))
+    }
+
     var body: some View {
-        Markdown(source)
+        Markdown(parsed)
             .markdownTheme(.pocketSand)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .onChange(of: text) { _, _ in
-                // Before the first snapshot this does nothing, so the first words paint
-                // immediately instead of the row sitting blank for a fifth of a second.
-                guard isStreaming, !text.isEmpty else { return }
+            .onChange(of: text) { _, latest in
+                guard isStreaming else {
+                    parsed = MarkdownContent(latest)
+                    return
+                }
+                // The first words of a reply parse at once, so the row does not sit blank for a
+                // fifth of a second. Later ones wait out the window.
                 let now = Date()
-                guard now.timeIntervalSince(snapshotAt) >= Self.coalesce else { return }
-                snapshot = text
-                snapshotAt = now
+                guard now.timeIntervalSince(parsedAt) >= Self.coalesce else { return }
+                parsed = MarkdownContent(latest)
+                parsedAt = now
             }
-    }
-
-    private var source: String {
-        guard isStreaming, !snapshot.isEmpty else { return text }
-        return snapshot
+            .onChange(of: isStreaming) { _, streaming in
+                // The last words may have arrived inside the window and been skipped: they are
+                // parsed now, so the finished answer is the exact text.
+                if !streaming { parsed = MarkdownContent(text) }
+            }
     }
 }
 

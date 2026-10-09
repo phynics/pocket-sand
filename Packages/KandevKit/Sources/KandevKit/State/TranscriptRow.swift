@@ -200,6 +200,12 @@ public enum TranscriptItem: Sendable, Identifiable, Equatable {
         return duration
     }
 
+    /// When the run this control stands for began, so a view that is still counting can
+    /// count from it. The same instant the duration is measured from.
+    public var stepsSummaryStart: Date? {
+        stepsSummaryRows?.first?.at
+    }
+
     /// How many times the step was repeated.
     public var repeatedLabel: String? {
         guard case .repeated(_, let count, _) = self else { return nil }
@@ -414,17 +420,20 @@ public struct TranscriptTurn: Sendable, Identifiable, Equatable {
 }
 
 extension Array where Element == TranscriptTurn {
-    /// The last thing the agent said before the turn at `index`.
+    /// The last thing the agent said before each turn, found in one pass.
     ///
-    /// One message, not a history: the sheet is about one exchange, and the agent's
-    /// last words are what the person was answering when they wrote the prompt. Nil for
-    /// the first turn, which nothing preceded.
-    public func reply(preceding index: Int) -> TranscriptRow? {
-        guard index > 0 else { return nil }
-        for turn in self[..<index].reversed() {
-            if let reply = turn.replyRow { return reply }
+    /// Element `i` is the reply that precedes turn `i`, nil for the first turn. One message,
+    /// not a history: the sheet is about one exchange, and the agent's last words are what the
+    /// person was answering when they wrote the prompt. Computing it per turn walked back through
+    /// every earlier turn each time, which is quadratic in the length of the conversation.
+    public func previousReplies() -> [TranscriptRow?] {
+        var replies: [TranscriptRow?] = []
+        var last: TranscriptRow?
+        for turn in self {
+            replies.append(last)
+            if let reply = turn.replyRow { last = reply }
         }
-        return nil
+        return replies
     }
 }
 
